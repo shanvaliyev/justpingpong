@@ -155,12 +155,15 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
       }
     },
     render() {
-      player.position.copy(game.player);
       // A gentle forehand/backhand pose; the centre position stays face-on.
       // Keep the forgiving circular contact area instead of adding spin mechanics.
-      player.rotation.set(0, -game.player.x * 0.28, -game.player.x * 0.38);
-      opponent.position.copy(game.opponent);
-      opponent.rotation.set(0, -game.opponent.x * 0.28, -game.opponent.x * 0.38);
+      for (const [mesh, position] of [
+        [player, game.player],
+        [opponent, game.opponent],
+      ] as const) {
+        mesh.position.copy(position);
+        mesh.rotation.set(0, -position.x * 0.28, -position.x * 0.38);
+      }
       ball.position.copy(game.ball);
       ball.visible = game.waiting <= 0;
       shadow.visible =
@@ -173,19 +176,13 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
     },
     dispose() {
       observer.disconnect();
-      const geometries = new Set<THREE.BufferGeometry>();
-      const materials = new Set<THREE.Material>();
+      // Shared geometries and materials are safe to dispose more than once.
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {
-          geometries.add(object.geometry);
-          for (const material of Array.isArray(object.material)
-            ? object.material
-            : [object.material])
-            materials.add(material);
+          object.geometry.dispose();
+          for (const material of [object.material].flat()) material.dispose();
         }
       });
-      geometries.forEach((geometry) => geometry.dispose());
-      materials.forEach((material) => material.dispose());
       renderer.dispose();
       renderer.domElement.remove();
     },

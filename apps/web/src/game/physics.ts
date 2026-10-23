@@ -6,8 +6,8 @@ export const BALL_RADIUS = 0.026;
 export const PADDLE_RADIUS = 0.19;
 export const TABLE = { halfWidth: 0.7625, halfLength: 1.37, netHeight: 0.1525 };
 export type Vec3 = { x: number; y: number; z: number };
-export type Phase = "ready" | "playing" | "paused";
-export const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(high, n));
+type Phase = "ready" | "playing" | "paused";
+const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(high, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export class PracticePhysics {
@@ -19,7 +19,6 @@ export class PracticePhysics {
   phase: Phase = "ready";
   rally = 0;
   best = 0;
-  speed = 0;
   message = "";
   waiting = 0;
   private serveNumber = 0;
@@ -36,7 +35,6 @@ export class PracticePhysics {
 
   reset() {
     this.rally = 0;
-    this.speed = 0;
     this.player = { x: 0, y: 0.36, z: 1.53 };
     this.target = { ...this.player };
     this.start();
@@ -119,7 +117,6 @@ export class PracticePhysics {
         const forwardSpeed = Math.max(0, (previous.z - paddle.z) / dt);
         const speed = 2.8 + Math.min(1.7, forwardSpeed * 0.55);
         this.launch(clamp(px * 0.45 + (x - px) * 1.8, -0.6, 0.6), -0.85, speed);
-        this.speed = Math.hypot(this.velocity.x, this.velocity.y, this.velocity.z);
         this.rally++;
         this.best = Math.max(this.best, this.rally);
         this.message = "";

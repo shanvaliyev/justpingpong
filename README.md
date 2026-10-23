@@ -37,7 +37,7 @@ Run `pnpm dev:web` and open the web app. The home page is a first-person table-t
 - A new game randomly selects the daytime sakura court, golden-hour seaside, or blue-hour Tokyo rooftop. Manual restart picks again (repeats are possible); misses and pause/resume keep the current scene.
 - The court backgrounds are generated illustrations; the table, ball, paddles, and shadows render in Three.js.
 
-Check the physics with `node --test apps/web/src/game/physics.test.mjs` (Node 22.18+), and the web build/types with `pnpm --filter web check-types`.
+Check the web build and types with `pnpm --filter web check-types`.
 
 ## Database Setup
 

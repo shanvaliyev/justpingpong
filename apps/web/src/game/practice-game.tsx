@@ -1,4 +1,4 @@
-import { ArrowUpRight, CircleHelp, Move, Pause, Play, RotateCcw, CircleDot } from "lucide-react";
+import { ArrowUpRight, CircleDot, CircleHelp, Move, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { createCourt } from "./court";
@@ -10,172 +10,184 @@ const COURTS = [
   { name: "Seaside court", image: "/game/seaside-court.webp" },
   { name: "Tokyo rooftop", image: "/game/tokyo-court.webp" },
 ];
+const randomCourt = () => COURTS[Math.floor(Math.random() * COURTS.length)];
+
+// Arrow keys share the WASD movement state.
+const KEY_ALIASES: Record<string, string> = {
+  ArrowUp: "w",
+  ArrowLeft: "a",
+  ArrowDown: "s",
+  ArrowRight: "d",
+};
+const GAME_KEYS = new Set(["w", "a", "s", "d", " ", "p", "enter"]);
+const normalizeKey = (key: string) => KEY_ALIASES[key] ?? key.toLowerCase();
 
 export function PracticeGame() {
   const host = useRef<HTMLDivElement>(null);
-  const game = useRef(new PracticePhysics());
-  const [scene, setScene] = useState(() => COURTS[Math.floor(Math.random() * COURTS.length)]);
-  const [hud, setHud] = useState({
-    phase: game.current.phase,
-    rally: 0,
-    best: 0,
-    message: game.current.message,
-  });
+  const [game] = useState(() => new PracticePhysics());
+  const [scene, setScene] = useState(randomCourt);
+  const [hud, setHud] = useState({ phase: game.phase, rally: 0, best: 0, message: "" });
   const [help, setHelp] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     const element = host.current!;
-    const physics = game.current;
-    // Warm the other backgrounds so restarting does not leave an empty court.
-    for (const scene of COURTS) {
-      const image = new Image();
-      image.src = scene.image;
-    }
     let court: ReturnType<typeof createCourt>;
     try {
-      court = createCourt(element, physics);
+      court = createCourt(element, game);
     } catch {
       setError(true);
       return;
     }
+    // Warm the other backgrounds so restarting does not leave an empty court.
+    for (const { image } of COURTS) new Image().src = image;
+
+    const keys = new Set<string>();
+    let activePointer: number | undefined;
+    let lastPointer: { y: number; time: number } | undefined;
     let frame = 0;
     let previousTime = performance.now();
     let accumulator = 0;
     let lastHud = 0;
-    let lastPointer: { y: number; time: number } | undefined;
-    let activePointer: number | undefined;
-    const keys = new Set<string>();
+
     const draw = (time: number) => {
       accumulator += Math.min((time - previousTime) / 1000, 0.05);
       previousTime = time;
       while (accumulator >= STEP) {
-        if (physics.phase === "playing") {
-          const dx =
-            Number(keys.has("ArrowRight") || keys.has("d")) -
-            Number(keys.has("ArrowLeft") || keys.has("a"));
-          const dy =
-            Number(keys.has("ArrowUp") || keys.has("w")) -
-            Number(keys.has("ArrowDown") || keys.has("s"));
-          if (dx) physics.target.x = physics.player.x + dx * STEP * 1.8;
-          if (dy) physics.target.y = physics.player.y + dy * STEP * 1.8;
+        if (game.phase === "playing") {
+          const dx = Number(keys.has("d")) - Number(keys.has("a"));
+          const dy = Number(keys.has("w")) - Number(keys.has("s"));
+          if (dx) game.target.x = game.player.x + dx * STEP * 1.8;
+          if (dy) game.target.y = game.player.y + dy * STEP * 1.8;
         }
-        physics.step();
+        game.step();
         accumulator -= STEP;
       }
       court.render();
       if (time - lastHud > 80) {
-        setHud({
-          phase: physics.phase,
-          rally: physics.rally,
-          best: physics.best,
-          message: physics.message,
-        });
         lastHud = time;
+        setHud({ phase: game.phase, rally: game.rally, best: game.best, message: game.message });
       }
       frame = requestAnimationFrame(draw);
     };
-    const pointerMove = (event: PointerEvent) => {
-      if (event.pointerType !== "mouse" && event.pointerId !== activePointer) return;
-      if (activePointer !== undefined && event.pointerId !== activePointer) return;
+
+    const onPointerMove = (event: PointerEvent) => {
+      // A mouse aims on hover; touch and pen aim only while their drag is active.
+      const tracked = event.pointerId === activePointer;
+      if (!tracked && (activePointer !== undefined || event.pointerType !== "mouse")) return;
       court.aim(event.clientX, event.clientY, event.pointerType !== "mouse");
       if (lastPointer) {
         const elapsed = event.timeStamp - lastPointer.time;
         const upwardSpeed = (lastPointer.y - event.clientY) / Math.max(8, elapsed);
-        if (elapsed < 100 && upwardSpeed > 0.45) physics.swing(Math.min(1, upwardSpeed / 2));
+        if (elapsed < 100 && upwardSpeed > 0.45) game.swing(Math.min(1, upwardSpeed / 2));
       }
       lastPointer = { y: event.clientY, time: event.timeStamp };
     };
-    const pointerDown = (event: PointerEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (activePointer !== undefined) return;
       activePointer = event.pointerId;
       element.setPointerCapture(event.pointerId);
       lastPointer = undefined;
-      pointerMove(event);
+      onPointerMove(event);
       element.focus({ preventScroll: true });
     };
-    const pointerEnd = (event: PointerEvent) => {
-      if (event.pointerId === activePointer) {
-        activePointer = undefined;
-        lastPointer = undefined;
-      }
-    };
-    const keyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLButtonElement) return;
-      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      if (
-        [
-          "ArrowUp",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowRight",
-          " ",
-          "w",
-          "a",
-          "s",
-          "d",
-          "p",
-          "Enter",
-        ].includes(key)
-      ) {
-        event.preventDefault();
-        keys.add(key);
-      }
-      if (event.repeat) return;
-      if (key === " ") physics.swing();
-      if (key === "p") physics.pause();
-      if (key === "Enter" && physics.phase === "ready") physics.start();
-    };
-    const keyUp = (event: KeyboardEvent) =>
-      keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key);
-    const blur = () => {
-      keys.clear();
-      lastPointer = undefined;
+    const onPointerEnd = (event: PointerEvent) => {
+      if (event.pointerId !== activePointer) return;
       activePointer = undefined;
-      if (physics.phase === "playing") physics.pause();
+      lastPointer = undefined;
     };
-    const visibility = () => {
-      if (document.hidden) blur();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLButtonElement) return;
+      const key = normalizeKey(event.key);
+      if (!GAME_KEYS.has(key)) return;
+      event.preventDefault();
+      keys.add(key);
+      if (event.repeat) return;
+      if (key === " ") game.swing();
+      if (key === "p") game.pause();
+      if (key === "enter" && game.phase === "ready") game.start();
     };
-    element.addEventListener("pointerdown", pointerDown);
-    element.addEventListener("pointermove", pointerMove);
-    element.addEventListener("pointerup", pointerEnd);
-    element.addEventListener("pointercancel", pointerEnd);
-    element.addEventListener("lostpointercapture", pointerEnd);
-    window.addEventListener("keydown", keyDown);
-    window.addEventListener("keyup", keyUp);
-    window.addEventListener("blur", blur);
-    document.addEventListener("visibilitychange", visibility);
+    const onBlur = () => {
+      keys.clear();
+      activePointer = undefined;
+      lastPointer = undefined;
+      if (game.phase === "playing") game.pause();
+    };
+
+    const listeners = new AbortController();
+    const { signal } = listeners;
+    element.addEventListener("pointerdown", onPointerDown, { signal });
+    element.addEventListener("pointermove", onPointerMove, { signal });
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
+      element.addEventListener(type, onPointerEnd, { signal });
+    }
+    window.addEventListener("keydown", onKeyDown, { signal });
+    window.addEventListener("keyup", (event) => keys.delete(normalizeKey(event.key)), { signal });
+    window.addEventListener("blur", onBlur, { signal });
+    document.addEventListener("visibilitychange", () => document.hidden && onBlur(), { signal });
     frame = requestAnimationFrame(draw);
+
     return () => {
+      listeners.abort();
       cancelAnimationFrame(frame);
       court.dispose();
-      element.removeEventListener("pointerdown", pointerDown);
-      element.removeEventListener("pointermove", pointerMove);
-      element.removeEventListener("pointerup", pointerEnd);
-      element.removeEventListener("pointercancel", pointerEnd);
-      element.removeEventListener("lostpointercapture", pointerEnd);
-      window.removeEventListener("keydown", keyDown);
-      window.removeEventListener("keyup", keyUp);
-      window.removeEventListener("blur", blur);
-      document.removeEventListener("visibilitychange", visibility);
     };
-  }, []);
+  }, [game]);
 
   const focusCourt = () => host.current?.focus({ preventScroll: true });
   const start = () => {
-    game.current.start();
+    game.start();
     focusCourt();
   };
-  const pause = () => {
-    game.current.pause();
+  const togglePause = () => {
+    game.pause();
+    setHelp(false);
+    focusCourt();
+  };
+  const restart = () => {
+    setScene(randomCourt());
+    game.reset();
+    setHelp(false);
+    focusCourt();
+  };
+  const closeHelp = () => {
     setHelp(false);
     focusCourt();
   };
   const toggleHelp = () => {
-    if (!help && game.current.phase === "playing") game.current.pause();
+    if (!help && game.phase === "playing") game.pause();
     setHelp(!help);
   };
+
+  const card = error
+    ? {
+        eyebrow: "WebGL unavailable",
+        title: "Your court couldn’t load.",
+        body: "Try a browser with WebGL enabled, then reload this page.",
+      }
+    : help
+      ? {
+          eyebrow: "The basics",
+          title: "Controls",
+          body: "Move your mouse or drag a finger to aim. Hold the paddle still to block; flick upward to hit harder. Returns use assisted aiming. Misses automatically feed a new ball.",
+          note: "Keyboard: arrow keys / WASD to move · Space to swing · P to pause.",
+          action: { label: "Close", onClick: closeHelp },
+        }
+      : hud.phase === "paused"
+        ? {
+            eyebrow: scene.name,
+            title: "Paused",
+            body: "Resume to continue the rally.",
+            action: { label: "Resume", onClick: togglePause },
+          }
+        : hud.phase === "ready"
+          ? {
+              eyebrow: scene.name,
+              title: "Table tennis",
+              body: "Play against AI. Move or drag to position your paddle; flick upward to swing.",
+              action: { label: "Start playing", onClick: start },
+            }
+          : undefined;
 
   return (
     <main className="practice-app">
@@ -191,19 +203,14 @@ export function PracticeGame() {
             <CircleHelp size={19} />
           </button>
           <button
-            onClick={pause}
+            onClick={togglePause}
             disabled={hud.phase === "ready" || error}
             aria-label={hud.phase === "paused" ? "Resume game" : "Pause game"}
           >
             {hud.phase === "paused" ? <Play size={18} /> : <Pause size={18} />}
           </button>
           <button
-            onClick={() => {
-              setScene(COURTS[Math.floor(Math.random() * COURTS.length)]);
-              game.current.reset();
-              setHelp(false);
-              focusCourt();
-            }}
+            onClick={restart}
             disabled={error}
             aria-label="Restart rally"
             title="Restart rally"
@@ -232,57 +239,23 @@ export function PracticeGame() {
           </div>
           <div>
             <span>Best</span>
-            <strong className="best-stat">{hud.best}</strong>
+            <strong>{hud.best}</strong>
           </div>
         </div>
 
-        {(hud.phase === "ready" || hud.phase === "paused" || help || error) && (
+        {card && (
           <div className="practice-overlay">
             <div className="practice-card">
               <span className="card-flower" aria-hidden="true">
                 ✿
               </span>
-              <span className="card-eyebrow">
-                {error ? "WEBGL UNAVAILABLE" : help ? "THE BASICS" : scene.name.toUpperCase()}
-              </span>
-              <h2>
-                {error
-                  ? "Your court couldn’t load."
-                  : help
-                    ? "Controls"
-                    : hud.phase === "paused"
-                      ? "Paused"
-                      : "Table tennis"}
-              </h2>
-              <p>
-                {error
-                  ? "Try a browser with WebGL enabled, then reload this page."
-                  : help
-                    ? "Move your mouse or drag a finger to aim. Hold the paddle still to block; flick upward to hit harder. Returns use assisted aiming. Misses automatically feed a new ball."
-                    : hud.phase === "paused"
-                      ? "Resume to continue the rally."
-                      : "Play against AI. Move or drag to position your paddle; flick upward to swing."}
-              </p>
-              {help && (
-                <p className="keyboard-help">
-                  Keyboard: arrow keys / WASD to move · Space to swing · P to pause.
-                </p>
-              )}
-              {!error && (
-                <button
-                  className="play-button"
-                  onClick={
-                    help
-                      ? () => {
-                          setHelp(false);
-                          focusCourt();
-                        }
-                      : hud.phase === "paused"
-                        ? pause
-                        : start
-                  }
-                >
-                  {help ? "Close" : hud.phase === "paused" ? "Resume" : "Start playing"}
+              <span className="card-eyebrow">{card.eyebrow}</span>
+              <h2>{card.title}</h2>
+              <p>{card.body}</p>
+              {card.note && <p className="keyboard-help">{card.note}</p>}
+              {card.action && (
+                <button className="play-button" onClick={card.action.onClick}>
+                  {card.action.label}
                   <ArrowUpRight size={19} />
                 </button>
               )}
@@ -290,11 +263,13 @@ export function PracticeGame() {
           </div>
         )}
 
-        <div className="court-bottom">
-          <div className={hud.message ? "live-status" : undefined} role="status">
-            {hud.message && <span className="status-dot" />}
-            {hud.message}
-          </div>
+        <div className="court-bottom" role="status">
+          {hud.message && (
+            <span className="live-status">
+              <span className="status-dot" />
+              {hud.message}
+            </span>
+          )}
         </div>
       </section>
 
