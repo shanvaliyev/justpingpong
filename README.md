@@ -26,6 +26,18 @@ First, install the dependencies:
 pnpm install
 ```
 
+### Play the local prototype
+
+Run `pnpm dev:web` and open the web app. The home page is a first-person table-tennis practice game; it needs no API server, database, account, or environment variables.
+
+- Move the mouse or drag one finger to position the floating paddle. Flick upward to swing forward; a stationary paddle can block.
+- Keyboard: arrow keys / WASD to move, Space to swing, P to pause.
+- A friendly AI returns the ball. Misses automatically feed a new ball. Restart clears the current rally, but keeps the session best until the page reloads.
+- Physics run at 120 Hz with gravity, swept paddle/net contacts, and table bounces. Returns have assisted aiming; this is an arcade prototype, without spin, regulation scoring, or multiplayer. The side-to-side racket tilt is a visual pose, not a spin control.
+- The sakura courtyard is a generated illustration; the table, ball, paddles, and shadows render in Three.js.
+
+Check the physics with `node --test apps/web/src/game/physics.test.mjs` (Node 22.18+), and the web build/types with `pnpm --filter web check-types`.
+
 ## Database Setup
 
 This project uses Cloudflare D1 (SQLite) with Drizzle ORM.

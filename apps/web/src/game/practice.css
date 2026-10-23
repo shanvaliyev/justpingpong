@@ -1,0 +1,464 @@
+.practice-app {
+  --ink: #535365;
+  --coral: #f17464;
+  --paper: #fff9ed;
+  position: relative;
+  height: 100svh;
+  min-height: 420px;
+  overflow: hidden;
+  color: var(--ink);
+  background: #9fcce8;
+  font-family: "Trebuchet MS", "Arial Rounded MT Bold", Arial, sans-serif;
+}
+.practice-header {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  left: 24px;
+  height: 52px;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+.practice-brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  color: #fffaf1;
+  text-decoration: none;
+  font-size: 25px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  text-shadow: 0 2px 6px #46628666;
+  height: 48px;
+  pointer-events: auto;
+}
+.brand-mark {
+  display: flex;
+  margin-right: 7px;
+}
+.brand-period {
+  color: #ffdd9b;
+}
+.practice-actions {
+  display: flex;
+  gap: 10px;
+  pointer-events: auto;
+}
+.practice-app button {
+  cursor: pointer;
+  transition:
+    transform 150ms,
+    background 150ms,
+    box-shadow 150ms;
+}
+.practice-app button:focus-visible,
+.practice-brand:focus-visible {
+  outline: 3px solid #ea876a;
+  outline-offset: 4px;
+}
+.practice-actions button {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 2px solid #ffffffb3;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow:
+    0 4px 0 #d5b4a261,
+    0 5px 15px #4d628024;
+  color: var(--coral);
+}
+.practice-actions button svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 2.8;
+}
+.practice-actions button:hover {
+  background: #fff0db;
+  transform: translateY(-2px) rotate(-5deg);
+}
+.practice-actions button:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+.practice-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+.practice-stage {
+  position: absolute;
+  inset: 0;
+  background: #9fcce8 url("/game/sakura-court.webp") center / cover no-repeat;
+}
+.court-canvas {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  outline: none;
+}
+.court-canvas:focus-visible {
+  outline: 3px solid #fff2c5;
+  outline-offset: -3px;
+}
+.court-canvas canvas {
+  display: block;
+}
+.practice-stats {
+  position: absolute;
+  top: 22px;
+  left: 24px;
+  display: flex;
+  gap: 10px;
+  pointer-events: none;
+}
+.practice-stats div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--paper);
+  border: 2px solid #ffffffb3;
+  box-shadow:
+    0 4px 0 #d5b4a261,
+    0 5px 15px #4d628024;
+  border-radius: 30px;
+  padding: 7px 20px;
+  min-height: 48px;
+}
+.practice-stats span {
+  font-size: 14px;
+  font-weight: 700;
+}
+.practice-stats strong {
+  color: var(--coral);
+  font-size: 27px;
+  line-height: 1;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  animation: score-pop 200ms ease-out;
+}
+.practice-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #889fc21a;
+  padding: 20px;
+}
+.practice-card {
+  position: relative;
+  width: 350px;
+  padding: 32px;
+  text-align: center;
+  background: #fffaf1f5;
+  border: 3px solid #fff;
+  border-radius: 30px;
+  box-shadow:
+    0 8px 0 #d4a99450,
+    0 16px 60px #34496b35;
+}
+.card-flower {
+  display: block;
+  font-size: 49px;
+  color: #efa1b1;
+  line-height: 1;
+  margin-bottom: 17px;
+  text-shadow: 2px 3px 0 #ffe1d9;
+}
+.card-eyebrow {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #bd837b;
+  font-weight: 800;
+}
+.practice-card h2 {
+  margin: 9px 0 12px;
+  font-size: 29px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  line-height: 1.15;
+}
+.practice-card p {
+  color: #83818c;
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0 0 20px;
+}
+.practice-card .keyboard-help {
+  font-size: 11px;
+  padding-top: 12px;
+  border-top: 1px solid #eee0d7;
+}
+.practice-app .play-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  padding: 14px 18px;
+  border: none;
+  border-radius: 22px;
+  background: var(--coral);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 4px 0 #d65e57;
+}
+.practice-app .play-button:hover {
+  transform: translateY(-2px);
+  background: #f58b70;
+}
+.practice-app .play-button:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+.court-bottom {
+  position: absolute;
+  bottom: 80px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fff9ede8;
+  box-shadow: 0 2px 8px #34496b15;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: #b9afaa;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.shot-speed {
+  background: #fff9ede8;
+  padding: 10px 15px;
+  border-radius: 18px;
+  font-size: 17px;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.shot-speed small {
+  display: block;
+  margin-top: 2px;
+  color: #9b9297;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+.practice-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  pointer-events: none;
+}
+.footer-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  background: #fff9edeb;
+  padding: 10px 15px;
+  border-radius: 22px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.footer-note > span:first-child {
+  color: #d8829d;
+  font-size: 20px;
+  line-height: 1;
+}
+.footer-note > span:last-child {
+  color: #a29296;
+  font-size: 10px;
+}
+.control-hints {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 18px;
+  border-radius: 24px;
+  background: #fff9edeb;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: auto;
+}
+.control-hints span,
+.control-hints button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.control-hints svg {
+  color: #cf8e82;
+}
+.control-hints button {
+  border: none;
+  border-left: 1px solid #e8d4c8;
+  padding: 0 0 0 15px;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+.control-hints button:hover {
+  color: var(--coral);
+}
+@keyframes score-pop {
+  from {
+    transform: scale(1.2);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (max-width: 700px) {
+  .practice-header {
+    top: 16px;
+    left: 14px;
+    right: 14px;
+    height: 100px;
+    align-items: flex-end;
+  }
+  .practice-brand {
+    top: 0;
+    font-size: 26px;
+  }
+  .practice-actions {
+    gap: 7px;
+  }
+  .practice-actions button {
+    width: 40px;
+    height: 40px;
+  }
+  .practice-actions button svg {
+    width: 18px;
+    height: 18px;
+  }
+  .practice-stats {
+    top: 76px;
+    left: 14px;
+    gap: 7px;
+  }
+  .practice-stats div {
+    gap: 7px;
+    padding: 7px 12px;
+    min-height: 40px;
+  }
+  .practice-stats span {
+    font-size: 11px;
+  }
+  .practice-stats strong {
+    font-size: 21px;
+  }
+  .practice-card {
+    width: 310px;
+    padding: 25px;
+  }
+  .practice-card h2 {
+    font-size: 26px;
+  }
+  .practice-card p {
+    font-size: 12px;
+  }
+  .court-bottom {
+    bottom: 80px;
+    left: 14px;
+    right: 14px;
+    align-items: center;
+  }
+  .live-status {
+    font-size: 10px;
+    padding: 9px 12px;
+    max-width: 255px;
+  }
+  .shot-speed {
+    font-size: 14px;
+    padding: 8px 11px;
+    white-space: nowrap;
+  }
+  .shot-speed small {
+    font-size: 6px;
+  }
+  .practice-footer {
+    bottom: 20px;
+    left: 14px;
+    right: 14px;
+    justify-content: center;
+  }
+  .footer-note {
+    display: none;
+  }
+  .control-hints {
+    gap: 14px;
+    font-size: 10px;
+    padding: 13px 15px;
+  }
+  .control-hints span {
+    gap: 5px;
+  }
+  .control-hints button {
+    font-size: 0;
+    padding-left: 10px;
+    gap: 0;
+  }
+  .control-hints button svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+@media (max-width: 360px) {
+  .practice-actions button {
+    width: 34px;
+    height: 40px;
+  }
+  .practice-stats div {
+    padding: 7px 9px;
+  }
+  .practice-actions {
+    gap: 5px;
+  }
+}
+@media (max-height: 560px) {
+  .practice-card {
+    padding: 20px;
+  }
+  .card-flower {
+    display: none;
+  }
+  .court-bottom {
+    bottom: 60px;
+  }
+  .practice-footer {
+    bottom: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .practice-app button {
+    transition: none;
+  }
+  .practice-stats strong {
+    animation: none;
+  }
+}
