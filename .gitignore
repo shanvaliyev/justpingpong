@@ -43,7 +43,7 @@ lerna-debug.log*
 .turbo
 .nx
 
-# Better-T-Stack
+# Deployment tooling
 .alchemy
 .vercel
 
