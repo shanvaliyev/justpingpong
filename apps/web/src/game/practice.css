@@ -94,7 +94,7 @@
 .practice-stage {
   position: absolute;
   inset: 0;
-  background: #9fcce8 url("/game/sakura-court.webp") center / cover no-repeat;
+  background: #9fcce8 center / cover no-repeat;
 }
 .court-canvas {
   position: absolute;

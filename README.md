@@ -34,7 +34,8 @@ Run `pnpm dev:web` and open the web app. The home page is a first-person table-t
 - Keyboard: arrow keys / WASD to move, Space to swing, P to pause.
 - A friendly AI returns the ball. Misses automatically feed a new ball. Restart clears the current rally, but keeps the session best until the page reloads.
 - Physics run at 120 Hz with gravity, swept paddle/net contacts, and table bounces. Returns have assisted aiming; this is an arcade prototype, without spin, regulation scoring, or multiplayer. The side-to-side racket tilt is a visual pose, not a spin control.
-- The sakura courtyard is a generated illustration; the table, ball, paddles, and shadows render in Three.js.
+- A new game randomly selects the daytime sakura court, golden-hour seaside, or blue-hour Tokyo rooftop. Manual restart picks again (repeats are possible); misses and pause/resume keep the current scene.
+- The court backgrounds are generated illustrations; the table, ball, paddles, and shadows render in Three.js.
 
 Check the physics with `node --test apps/web/src/game/physics.test.mjs` (Node 22.18+), and the web build/types with `pnpm --filter web check-types`.
 

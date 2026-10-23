@@ -5,9 +5,16 @@ import { createCourt } from "./court";
 import { PracticePhysics, STEP } from "./physics";
 import "./practice.css";
 
+const COURTS = [
+  { name: "Sakura court", image: "/game/sakura-court.webp" },
+  { name: "Seaside court", image: "/game/seaside-court.webp" },
+  { name: "Tokyo rooftop", image: "/game/tokyo-court.webp" },
+];
+
 export function PracticeGame() {
   const host = useRef<HTMLDivElement>(null);
   const game = useRef(new PracticePhysics());
+  const [scene, setScene] = useState(() => COURTS[Math.floor(Math.random() * COURTS.length)]);
   const [hud, setHud] = useState({
     phase: game.current.phase,
     rally: 0,
@@ -21,6 +28,11 @@ export function PracticeGame() {
   useEffect(() => {
     const element = host.current!;
     const physics = game.current;
+    // Warm the other backgrounds so restarting does not leave an empty court.
+    for (const scene of COURTS) {
+      const image = new Image();
+      image.src = scene.image;
+    }
     let court: ReturnType<typeof createCourt>;
     try {
       court = createCourt(element, physics);
@@ -189,6 +201,7 @@ export function PracticeGame() {
           </button>
           <button
             onClick={() => {
+              setScene(COURTS[Math.floor(Math.random() * COURTS.length)]);
               game.current.reset();
               setHelp(false);
               focusCourt();
@@ -202,7 +215,11 @@ export function PracticeGame() {
         </div>
       </header>
 
-      <section className="practice-stage" aria-label="Table tennis practice">
+      <section
+        className="practice-stage"
+        aria-label="Table tennis practice"
+        style={{ backgroundImage: `url(${scene.image})` }}
+      >
         <div
           ref={host}
           className="court-canvas"
@@ -228,7 +245,7 @@ export function PracticeGame() {
                 ✿
               </span>
               <span className="card-eyebrow">
-                {error ? "WEBGL UNAVAILABLE" : help ? "THE BASICS" : "SAKURA COURT"}
+                {error ? "WEBGL UNAVAILABLE" : help ? "THE BASICS" : scene.name.toUpperCase()}
               </span>
               <h2>
                 {error
@@ -289,7 +306,7 @@ export function PracticeGame() {
 
       <footer className="practice-footer">
         <h1 className="footer-note">
-          <span aria-hidden="true">✿</span> Sakura court <span>· AI opponent</span>
+          <span aria-hidden="true">✿</span> {scene.name} <span>· AI opponent</span>
         </h1>
         <div className="control-hints">
           <span>
