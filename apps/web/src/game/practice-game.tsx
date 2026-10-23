@@ -19,7 +19,6 @@ export function PracticeGame() {
     phase: game.current.phase,
     rally: 0,
     best: 0,
-    speed: 0,
     message: game.current.message,
   });
   const [help, setHelp] = useState(false);
@@ -70,7 +69,6 @@ export function PracticeGame() {
           phase: physics.phase,
           rally: physics.rally,
           best: physics.best,
-          speed: physics.speed,
           message: physics.message,
         });
         lastHud = time;
@@ -297,10 +295,6 @@ export function PracticeGame() {
             {hud.message && <span className="status-dot" />}
             {hud.message}
           </div>
-          <span className="shot-speed">
-            {hud.speed ? `${hud.speed.toFixed(1)} m/s` : "— m/s"}
-            <small>LAST RETURN</small>
-          </span>
         </div>
       </section>
 
