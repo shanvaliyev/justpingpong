@@ -27,7 +27,7 @@
     "@justpingpong/config": "workspace:*",
     "@types/node": "^26.4.1",
     "lefthook": "^2.2.1",
-    "oxfmt": "^0.72.0",
+    "oxfmt": "^0.73.0",
     "oxlint": "^1.87.0",
     "turbo": "^2.11.7",
     "typescript": "catalog:",
