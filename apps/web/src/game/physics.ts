@@ -82,7 +82,6 @@ export class PracticePhysics {
 
     // A speed-limited practice partner, not a paddle that teleports to the ball.
     this.opponent.x = approach(this.opponent.x, clamp(this.ball.x, -0.86, 0.86), 1.5);
-    this.opponent.y = approach(this.opponent.y, clamp(this.ball.y, 0.15, 1.05), 2);
     if (this.waiting > 0) {
       this.waiting -= dt;
       if (this.waiting <= 0) {
