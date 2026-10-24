@@ -11,14 +11,14 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { createCourt } from "./court";
+import { createCourt, type CourtMood } from "./court";
 import { PracticePhysics, STEP } from "./physics";
 import "./practice.css";
 
-const COURTS = [
-  { name: "Sakura court", image: "/game/sakura-court.webp" },
-  { name: "Seaside court", image: "/game/seaside-court.webp" },
-  { name: "Tokyo rooftop", image: "/game/tokyo-court.webp" },
+const COURTS: { id: CourtMood; name: string; image: string }[] = [
+  { id: "sakura", name: "Sakura court", image: "/game/sakura-court.webp" },
+  { id: "seaside", name: "Seaside court", image: "/game/seaside-court.webp" },
+  { id: "tokyo", name: "Tokyo rooftop", image: "/game/tokyo-court.webp" },
 ];
 const randomCourt = () => COURTS[Math.floor(Math.random() * COURTS.length)];
 
@@ -65,7 +65,7 @@ export function PracticeGame() {
 
     const draw = (time: number) => {
       const elapsed = Math.min((time - previousTime) / 1000, 0.05);
-      accumulator += elapsed;
+      accumulator += elapsed * court.timeScale();
       previousTime = time;
       while (accumulator >= STEP) {
         if (game.phase === "playing") {
@@ -155,6 +155,10 @@ export function PracticeGame() {
     courtRef.current?.setMuted(muted);
   }, [muted]);
 
+  useEffect(() => {
+    courtRef.current?.setScene(scene.id, scene.image);
+  }, [scene]);
+
   const focusCourt = () => host.current?.focus({ preventScroll: true });
   const start = () => {
     game.start();
@@ -190,7 +194,7 @@ export function PracticeGame() {
       ? {
           eyebrow: "The basics",
           title: "Controls",
-          body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim. Flick up for power. Use the pause button for a break. Misses feed a new ball.",
+          body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim and curve. Flick up for power and topspin. Use the pause button for a break. Misses feed a new ball.",
           note: "Desktop shortcuts: arrows / WASD to move · Space to swing · P to pause.",
           action: { label: "Close", onClick: closeHelp },
         }
@@ -244,6 +248,7 @@ export function PracticeGame() {
       <section
         className="practice-stage"
         aria-label="Table tennis practice"
+        data-mood={scene.id}
         style={{ backgroundImage: `url(${scene.image})` }}
       >
         <div
@@ -253,6 +258,7 @@ export function PracticeGame() {
           role="application"
           aria-label="Table tennis court. Drag a finger to move your paddle. Swipe sideways on contact to aim; flick up to hit harder. Use the pause button to pause."
         />
+        <div className="court-grade" aria-hidden="true" />
         <div className="practice-stats" aria-label="Practice statistics">
           <div>
             <span>Returns</span>
@@ -313,9 +319,9 @@ export function PracticeGame() {
               setMuted(!muted);
               focusCourt();
             }}
-            aria-label="Mute impact sounds"
+            aria-label="Mute sound"
             aria-pressed={muted}
-            title={muted ? "Unmute impact sounds" : "Mute impact sounds"}
+            title={muted ? "Unmute sound" : "Mute sound"}
           >
             {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>

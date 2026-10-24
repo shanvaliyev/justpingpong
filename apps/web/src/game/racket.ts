@@ -145,12 +145,8 @@ function handleGeometry() {
  * physics contact point; every rotation pivots there so the visible blade stays on the hitbox.
  * Red rubber is on the model's +z face, black on -z.
  */
-export function createRacket(options: {
-  side: 1 | -1;
-  forehand: "red" | "black";
-  envMap: THREE.Texture;
-}) {
-  const { side, envMap } = options;
+export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" }) {
+  const { side } = options;
   const textures = [
     rubberTexture("#b0141c", "rgba(0, 0, 0, 0.12)"),
     rubberTexture("#141518", "rgba(255, 255, 255, 0.05)"),
@@ -163,8 +159,7 @@ export function createRacket(options: {
       roughness: 0.48,
       clearcoat: 0.3,
       clearcoatRoughness: 0.5,
-      envMap,
-      envMapIntensity: 0.35,
+      envMapIntensity: 0.5,
     });
   const shadowed = (mesh: THREE.Mesh) => {
     mesh.castShadow = true;
@@ -180,17 +175,19 @@ export function createRacket(options: {
     curveSegments: 40,
   });
   wood.translate(0, 0, -BLADE.wood / 2);
+  // Extrusion groups: 0 is the (hidden) faces under the rubber, 1 is the edge, wrapped in tape.
   model.add(
     shadowed(
-      new THREE.Mesh(
-        wood,
-        new THREE.MeshStandardMaterial({
-          color: 0xe8cc98,
-          roughness: 0.6,
-          envMap,
-          envMapIntensity: 0.4,
+      new THREE.Mesh(wood, [
+        new THREE.MeshStandardMaterial({ color: 0xe8cc98, roughness: 0.6 }),
+        new THREE.MeshPhysicalMaterial({
+          color: 0x17181d,
+          roughness: 0.35,
+          metalness: 0.2,
+          clearcoat: 0.6,
+          envMapIntensity: 0.8,
         }),
-      ),
+      ]),
     ),
   );
   const sheet = new THREE.ExtrudeGeometry(blade, {
@@ -221,8 +218,7 @@ export function createRacket(options: {
           roughness: 0.42,
           clearcoat: 0.6,
           clearcoatRoughness: 0.3,
-          envMap,
-          envMapIntensity: 0.6,
+          envMapIntensity: 0.7,
         }),
       ),
     ),

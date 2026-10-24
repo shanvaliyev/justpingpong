@@ -3,26 +3,66 @@ import { test } from "node:test";
 
 import { BALL_RADIUS, PracticePhysics, STEP, TABLE } from "../src/game/physics.ts";
 
-const near = (actual, expected) =>
-  assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} ≠ ${expected}`);
+// Air forces are applied once per tick, so subdividing ticks shifts results slightly.
+const near = (actual, expected, tolerance = 1e-9) =>
+  assert.ok(Math.abs(actual - expected) < tolerance, `${actual} ≠ ${expected}`);
 const movingBall = (ball, velocity) => {
   const game = new PracticePhysics();
   game.start();
   game.ball = { ...ball };
   game.velocity = { ...velocity };
+  game.spin = { x: 0, y: 0, z: 0 };
   return game;
 };
 const approaching = (x = 0, speed = 3.6) =>
   movingBall({ x, y: 0.36, z: 1.49 }, { x: 0, y: 1.8, z: speed });
 
-test("free flight follows gravity independently of step subdivision", () => {
-  for (const dt of [STEP, STEP / 2]) {
-    const game = movingBall({ x: 0.17, y: 0.9, z: 0.4 }, { x: -0.3, y: 0.7, z: 0.2 });
-    for (let i = 0; i < Math.round(0.25 / dt); i++) game.step(dt);
-    near(game.ball.x, 0.17 - 0.3 * 0.25);
-    near(game.ball.y, 0.9 + 0.7 * 0.25 - 0.5 * 9.81 * 0.25 ** 2);
-    near(game.velocity.y, 0.7 - 9.81 * 0.25);
-  }
+test("drag slows a fast ball like a real one, independently of step subdivision", () => {
+  const runs = [STEP, STEP / 2].map((dt) => {
+    const game = movingBall({ x: 0, y: 5, z: 1 }, { x: 0, y: 0, z: -10 });
+    for (let i = 0; i < Math.round(0.1 / dt); i++) game.step(dt);
+    return game;
+  });
+  // 1D quadratic drag, dv/dt = -k v², gives v = v0 / (1 + k v0 t) with k = 0.1 per metre.
+  near(runs[0].velocity.z, -10 / (1 + 0.1 * 10 * 0.1), 0.05);
+  assert.ok(
+    runs[0].velocity.y < 0 && runs[0].velocity.y > -9.81 * 0.1,
+    "drag also resists falling",
+  );
+  for (const axis of ["x", "y", "z"]) near(runs[0].ball[axis], runs[1].ball[axis], 5e-3);
+});
+
+test("topspin dives and kicks forward off the table; backspin floats and checks up", () => {
+  // Travelling towards the opponent (-z), topspin turns the ball's top forward: spin.x < 0.
+  const flights = [-80, 0, 80].map((spinX) => {
+    const game = movingBall({ x: 0, y: 0.3, z: 1 }, { x: 0, y: 1, z: -5 });
+    game.spin = { x: spinX, y: 0, z: 0 };
+    let height;
+    let after;
+    for (let i = 0; i < 120 && !after; i++) {
+      game.step();
+      if (height === undefined && game.ball.z <= 0.4) height = game.ball.y;
+      if (game.impacts.some((impact) => impact.surface === "table")) after = { ...game.velocity };
+    }
+    return { height, after };
+  });
+  const [top, flat, back] = flights;
+  assert.ok(top.height < flat.height - 0.01 && back.height > flat.height + 0.01);
+  assert.ok(top.after.z < flat.after.z - 0.3, "topspin should leave the bounce faster");
+  assert.ok(back.after.z > flat.after.z + 0.3, "backspin should leave the bounce slower");
+});
+
+test("brushing up through contact imparts topspin, while a still block adds none", () => {
+  const spins = [0, 2].map((brush) => {
+    const game = approaching();
+    game.player.y = 0.36 - brush * STEP;
+    game.target.y = game.player.y + brush * STEP;
+    game.step();
+    assert.equal(game.rally, 1);
+    return game.spin.x;
+  });
+  near(spins[0], 0);
+  assert.ok(spins[1] < -20, `expected topspin, got ${spins[1]}`);
 });
 
 test("racket contact consumes the remainder of the tick, without repeat hits", () => {
@@ -34,8 +74,8 @@ test("racket contact consumes the remainder of the tick, without repeat hits", (
   assert.equal(split.rally, 1);
   assert.ok(whole.ball.z < 1.48, "ball must already be travelling away from contact");
   for (const axis of ["x", "y", "z"]) {
-    near(whole.ball[axis], split.ball[axis]);
-    near(whole.velocity[axis], split.velocity[axis]);
+    near(whole.ball[axis], split.ball[axis], 1e-4);
+    near(whole.velocity[axis], split.velocity[axis], 1e-2);
   }
   for (let i = 0; i < 10; i++) whole.step();
   assert.equal(whole.rally, 1);
@@ -80,8 +120,10 @@ test("incoming momentum and a forward stroke determine speed, not a preset launc
     game.step();
     assert.equal(game.rally, 1);
   }
-  assert.ok(fast.velocity.z < slow.velocity.z - 1.5);
-  assert.ok(drive.velocity.z < slow.velocity.z - 4);
+  // The wrist sets the face angle, so compare total speed rather than its forward part.
+  const speed = (game) => Math.hypot(game.velocity.x, game.velocity.y, game.velocity.z);
+  assert.ok(speed(fast) > speed(slow) + 1.5);
+  assert.ok(speed(drive) > speed(slow) + 4);
 });
 
 test("table bounce occurs at time of impact and retains the rest of the flight", () => {
@@ -93,10 +135,11 @@ test("table bounce occurs at time of impact and retains the rest of the flight",
   game.step();
   const bounce = (2 + 9.81 * time) * 0.88;
   const remaining = STEP - time;
-  near(game.velocity.y, bounce - 9.81 * remaining);
-  near(game.ball.y, BALL_RADIUS + bounce * remaining - 0.5 * 9.81 * remaining ** 2);
-  near(game.ball.x, 0.6 + 1.2 * time + 1.2 * 0.98 * remaining);
-  near(game.velocity.z, -0.4 * 0.98);
+  // Drag shifts this tick by a few mm/s; a bounce judged at the end of the tick would be 10x off.
+  near(game.velocity.y, bounce - 9.81 * remaining, 0.006);
+  near(game.ball.y, BALL_RADIUS + bounce * remaining - 0.5 * 9.81 * remaining ** 2, 1e-4);
+  near(game.ball.x, 0.6 + 1.2 * time + 1.2 * 0.98 * remaining, 1e-4);
+  near(game.velocity.z, -0.4 * 0.98, 0.006);
   assert.deepEqual(
     game.impacts.map((impact) => impact.surface),
     ["table"],
@@ -172,6 +215,41 @@ test("the default feed can be blocked across the net and returned by the partner
   );
   assert.ok(game.impacts[2].position.z < 0);
   assert.equal(game.waiting, 0);
+});
+
+test("full-power flicks of the feed land across the net, whatever the upward speed", () => {
+  // Where the feed crosses the racket plane, found with the racket out of the way.
+  const probe = new PracticePhysics();
+  probe.start();
+  probe.player = probe.target = { x: 9, y: 0, z: 1.53 };
+  let tick = 0;
+  while (probe.ball.z < 1.49) {
+    probe.step();
+    tick++;
+  }
+  for (const up of [0, 2, 4]) {
+    const game = new PracticePhysics();
+    game.start();
+    const contact = { ...probe.ball };
+    game.player = { ...game.player, x: contact.x, y: contact.y - up * 8 * STEP };
+    game.target = { ...game.player };
+    const landings = [];
+    for (let i = 0; i < 300 && landings.length === 0; i++) {
+      if (i >= tick - 8) {
+        // A finger flick: the racket rises through the ball while the swing drives forward.
+        game.target.y = contact.y + up * (i - tick) * STEP;
+        game.swing(1);
+      }
+      game.step();
+      if (game.rally === 1) {
+        for (const impact of game.impacts) if (impact.surface !== "player") landings.push(impact);
+      }
+      game.impacts.length = 0;
+    }
+    assert.equal(game.rally, 1, `up ${up}: missed the ball`);
+    assert.equal(landings[0]?.surface, "table", `up ${up}: ${landings[0]?.surface}`);
+    assert.ok(landings[0].position.z < 0 && landings[0].position.z > -TABLE.halfLength);
+  }
 });
 
 test("pause freezes play, reset preserves best, and a settled ball feeds a new one", () => {
