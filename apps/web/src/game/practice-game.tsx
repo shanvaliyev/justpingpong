@@ -17,6 +17,13 @@ import { PracticePhysics, STEP, type Phase } from "./physics";
 import "./practice.css";
 
 const randomCourt = (): CourtId => COURT_IDS[Math.floor(Math.random() * COURT_IDS.length)];
+/** index.html picks the first court so its painting downloads alongside the app; use it once. */
+const firstCourt = (): CourtId => {
+  const { dataset } = document.documentElement;
+  const picked = COURT_IDS.find((id) => id === dataset.court);
+  delete dataset.court;
+  return picked ?? randomCourt();
+};
 
 // Arrow keys share the WASD movement state.
 const KEY_ALIASES: Record<string, string> = {
@@ -54,14 +61,26 @@ export function PracticeGame() {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<{ court: Court; audio: CourtAudio } | null>(null);
   const [game] = useState(() => new PracticePhysics());
-  const [courtId, setCourtId] = useState(randomCourt);
+  const [courtId, setCourtId] = useState(firstCourt);
   const [hud, setHud] = useState(() => readHud(game));
   const [help, setHelp] = useState(false);
   const [error, setError] = useState(false);
   const [muted, setMuted] = useState(false);
   const court = COURTS[courtId];
+  // The 3D setup holds the main thread for a while, so let the illustration and card paint first.
+  const [painted, setPainted] = useState(false);
 
   useEffect(() => {
+    let timer = 0;
+    const frame = requestAnimationFrame(() => (timer = window.setTimeout(() => setPainted(true))));
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!painted) return;
     const element = host.current!;
     let court: Court;
     try {
@@ -72,8 +91,6 @@ export function PracticeGame() {
     }
     const audio = createCourtAudio();
     view.current = { court, audio };
-    // Warm the other backgrounds so restarting does not leave an empty court.
-    for (const { image } of Object.values(COURTS)) new Image().src = image;
 
     const keys = new Set<string>();
     let activePointer: number | undefined;
@@ -173,7 +190,14 @@ export function PracticeGame() {
     window.addEventListener("keyup", onKeyUp, { signal });
     window.addEventListener("blur", onBlur, { signal });
     document.addEventListener("visibilitychange", () => document.hidden && onBlur(), { signal });
-    frame = requestAnimationFrame(draw);
+    void court.ready.then(() => {
+      if (signal.aborted) return;
+      previousTime = performance.now();
+      frame = requestAnimationFrame(draw);
+      // Warm the other backgrounds so restarting does not leave an empty court. Waiting until the
+      // first court is up keeps them from competing with it for bandwidth.
+      for (const { image } of Object.values(COURTS)) new Image().src = image;
+    });
 
     return () => {
       listeners.abort();
@@ -182,16 +206,16 @@ export function PracticeGame() {
       court.dispose();
       view.current = null;
     };
-  }, [game]);
+  }, [game, painted]);
 
   useEffect(() => {
     view.current?.audio.setMuted(muted);
-  }, [muted]);
+  }, [muted, painted]);
 
   useEffect(() => {
     view.current?.court.setCourt(courtId);
     view.current?.audio.setCourt(courtId);
-  }, [courtId]);
+  }, [courtId, painted]);
 
   const focusCourt = () => host.current?.focus({ preventScroll: true });
   const start = () => {

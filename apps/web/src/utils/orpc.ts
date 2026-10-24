@@ -3,22 +3,25 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { QueryCache, QueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 import { ENV } from "../env.public";
 
 export function createQueryClient() {
   return new QueryClient({
     queryCache: new QueryCache({
+      // Toasts load on demand so they stay out of the game's bundle; queries run only on pages
+      // whose shell has already loaded them.
       onError: (error, query) => {
-        toast.error(`Error: ${error.message}`, {
-          action: {
-            label: "retry",
-            onClick: () => {
-              query.invalidate();
+        void import("sonner").then(({ toast }) =>
+          toast.error(`Error: ${error.message}`, {
+            action: {
+              label: "retry",
+              onClick: () => {
+                query.invalidate();
+              },
             },
-          },
-        });
+          }),
+        );
       },
     }),
   });

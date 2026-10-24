@@ -16,6 +16,9 @@ export default defineConfig({
     tanstackRouter({
       target: "react",
       autoCodeSplitting: true,
+      // The game is the landing page: bundle it with the entry so it does not wait for the
+      // entry to run before its own chunk starts downloading.
+      codeSplittingOptions: { splitBehavior: ({ routeId }) => (routeId === "/" ? [] : undefined) },
     }),
     react(),
     VitePWA({

@@ -27,6 +27,7 @@ export type CourtId = (typeof COURT_IDS)[number];
 // Lights are matched to each illustration so the 3D objects sit in the painting:
 // the sakura sun is high on the left, the seaside sun sets behind the far right, and the
 // Tokyo rooftop is lit by a warm lamp overhead with the blue city behind.
+// index.html preloads the first court's image by id; keep its list in sync.
 export const COURTS: Record<CourtId, { name: string; image: string; lighting: Lighting }> = {
   sakura: {
     name: "Sakura court",
@@ -77,6 +78,11 @@ export const COURTS: Record<CourtId, { name: string; image: string; lighting: Li
 
 /** Touch aims a little above the finger, so the finger does not hide the racket. */
 const TOUCH_OFFSET = 42;
+// Adaptive resolution: when most of a sampling window of play runs below ~50 fps, render fewer
+// pixels. It only steps down, so a sharp image never flickers between resolutions.
+const SLOW_FRAME = 1 / 50;
+const SAMPLE_TIME = 2;
+const MIN_PIXEL_RATIO = 1;
 
 /** Tournament-blue top with painted lines and a faint matte grain. */
 function tableTexture() {
@@ -255,10 +261,22 @@ function disposeTree(root: THREE.Object3D) {
 
 export type Court = ReturnType<typeof createCourt>;
 
-/** The 3D court drawn over the illustrated background inside `host`. */
+/** Decode an illustration off the main thread; same-origin, so it shares the page's preload. */
+async function loadImage(src: string) {
+  const image = new Image();
+  image.src = src;
+  await image.decode();
+  return image;
+}
+
+/**
+ * The 3D court drawn over the illustrated background inside `host`. Nothing is drawn until
+ * `ready` resolves: the first court's reflections are built and every shader has compiled.
+ */
 export function createCourt(host: HTMLElement) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  let pixelRatio = Math.min(window.devicePixelRatio, 2);
+  renderer.setPixelRatio(pixelRatio);
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.shadowMap.enabled = true;
@@ -285,11 +303,12 @@ export function createCourt(host: HTMLElement) {
   key.shadow.radius = 3;
   const rim = new THREE.DirectionalLight();
 
-  // Environment reflections start as a neutral studio and switch to the painted scene once it loads.
+  // Reflections come from each court's painting, built once per court. A neutral studio stands in
+  // only if a painting cannot load. Compile the converter while the first painting downloads.
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  let painted: THREE.Texture | undefined;
-  scene.environment = studio;
+  pmrem.compileEquirectangularShader();
+  const environments = new Map<CourtId, THREE.Texture>();
+  let studio: THREE.Texture | undefined;
 
   const table = createTable();
   const player = createRacket({ side: 1, forehand: "black" });
@@ -311,9 +330,15 @@ export function createCourt(host: HTMLElement) {
   let hitStop = 0;
   let clock = 0;
   const position = new THREE.Vector3();
+  // Outside play nothing moves, so a frame is drawn only when the view or the phase changes.
+  let dirty = true;
+  let lastPhase: PracticePhysics["phase"] | undefined;
+  let sampled = 0;
+  let slow = 0;
 
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(width, height);
     camera.aspect = width / height;
     const portrait = camera.aspect < 0.8;
@@ -322,6 +347,7 @@ export function createCourt(host: HTMLElement) {
     camera.lookAt(0, portrait ? 0.2 : 0.04, 0);
     camera.updateProjectionMatrix();
     aimCamera.copy(camera);
+    dirty = true;
   };
   const observer = new ResizeObserver(resize);
   observer.observe(host);
@@ -331,10 +357,38 @@ export function createCourt(host: HTMLElement) {
   const pointer = new THREE.Vector2();
   const handPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -PLAYER_HOME.z);
   const hand = new THREE.Vector3();
-  const loader = new THREE.TextureLoader();
   let courtRequest = 0;
+  let disposed = false;
+  let compiling = false;
+  let markReady!: () => void;
+  const ready = new Promise<void>((resolve) => (markReady = resolve));
+  const useEnvironment = (texture: THREE.Texture) => {
+    scene.environment = texture;
+    dirty = true;
+    // Reflections are part of every lit shader, so compile once the first ones exist; with
+    // KHR_parallel_shader_compile this keeps the main thread free.
+    if (compiling) return;
+    compiling = true;
+    void renderer.compileAsync(scene, camera).then(() => {
+      if (disposed) return;
+      // A shader's first draw and each buffer's upload also block. Draw once with the hidden
+      // trails, rings, flashes, and sparks shown, so none of that lands on a rally's first hit,
+      // then clear it before the first real frame.
+      const hidden: THREE.Object3D[] = [];
+      scene.traverse((object) => {
+        if (object.visible) return;
+        hidden.push(object);
+        object.visible = true;
+      });
+      renderer.render(scene, camera);
+      for (const object of hidden) object.visible = false;
+      renderer.clear();
+      markReady();
+    });
+  };
 
   return {
+    ready,
     /** Match lights, reflections, and ball glow to the illustrated court behind the canvas. */
     setCourt(id: CourtId) {
       const { image, lighting } = COURTS[id];
@@ -351,17 +405,29 @@ export function createCourt(host: HTMLElement) {
       scene.environmentIntensity = lighting.environment;
       table.floorShadow.opacity = lighting.shadow;
       ball.setGlow(lighting.glow);
+      dirty = true;
       const request = ++courtRequest;
-      loader.load(image, (texture) => {
-        if (request !== courtRequest) return texture.dispose();
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        texture.colorSpace = THREE.SRGBColorSpace;
-        const next = pmrem.fromEquirectangular(texture).texture;
-        texture.dispose();
-        painted?.dispose();
-        painted = next;
-        scene.environment = next;
-      });
+      const built = environments.get(id);
+      if (built) return useEnvironment(built);
+      loadImage(image).then(
+        (picture) => {
+          if (request !== courtRequest || disposed) return;
+          const texture = new THREE.Texture(picture);
+          texture.mapping = THREE.EquirectangularReflectionMapping;
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.needsUpdate = true;
+          const next = pmrem.fromEquirectangular(texture).texture;
+          texture.dispose();
+          environments.set(id, next);
+          useEnvironment(next);
+        },
+        () => {
+          // Keep the current reflections; the studio is only for a court with none yet.
+          if (request !== courtRequest || disposed || scene.environment) return;
+          studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+          useEnvironment(studio);
+        },
+      );
     },
     /** Where the player's hand should go for a pointer at this screen position, if anywhere. */
     handAt(clientX: number, clientY: number, touch: boolean) {
@@ -379,6 +445,20 @@ export function createCourt(host: HTMLElement) {
     },
     render(game: PracticePhysics, impacts: readonly Impact[], elapsed: number, alpha: number) {
       const playing = game.phase === "playing";
+      if (!playing && !dirty && game.phase === lastPhase) return;
+      dirty = false;
+      lastPhase = game.phase;
+      if (playing) {
+        sampled += elapsed;
+        if (elapsed > SLOW_FRAME) slow += elapsed;
+        if (sampled >= SAMPLE_TIME) {
+          if (slow > sampled / 2 && pixelRatio > MIN_PIXEL_RATIO) {
+            pixelRatio = Math.max(MIN_PIXEL_RATIO, pixelRatio - 0.5);
+            resize();
+          }
+          sampled = slow = 0;
+        }
+      }
       const dt = playing ? elapsed : 0;
       if (!playing) alpha = 1;
       hitStop = Math.max(0, hitStop - dt);
@@ -408,9 +488,10 @@ export function createCourt(host: HTMLElement) {
       renderer.render(scene, camera);
     },
     dispose() {
+      disposed = true;
       observer.disconnect();
-      studio.dispose();
-      painted?.dispose();
+      for (const texture of environments.values()) texture.dispose();
+      studio?.dispose();
       pmrem.dispose();
       disposeTree(scene);
       renderer.dispose();
