@@ -1,19 +1,11 @@
-import {
-  ArrowUpRight,
-  CircleDot,
-  CircleHelp,
-  Move,
-  Pause,
-  Play,
-  RotateCcw,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
+import "@fontsource/dotgothic16/400.css";
+import "@fontsource/press-start-2p/400.css";
 import { useEffect, useRef, useState } from "react";
 
 import { createCourtAudio, type CourtAudio } from "./audio";
 import { COURT_IDS, COURTS, createCourt, type Court, type CourtId } from "./court";
 import { PracticePhysics, STEP, type Phase } from "./physics";
+import { PixelIcon } from "./pixel-icon";
 import "./practice.css";
 
 const randomCourt = (): CourtId => COURT_IDS[Math.floor(Math.random() * COURT_IDS.length)];
@@ -49,9 +41,21 @@ const readHud = (game: PracticePhysics): Hud => ({
 const sameHud = (a: Hud, b: Hud) =>
   a.phase === b.phase && a.rally === b.rally && a.best === b.best && a.message === b.message;
 
+/** An arcade score: unlit leading zeros pad it to three digits without changing what is read out. */
+const Score = ({ value }: { value: number }) => (
+  <>
+    <span className="score-pad" aria-hidden="true">
+      {"0".repeat(Math.max(0, 3 - String(value).length))}
+    </span>
+    {value}
+  </>
+);
+
 type Card = {
   eyebrow: string;
   title: string;
+  /** Decorative Japanese subtitle, as on old arcade title screens. */
+  kana: string;
   body: string;
   note?: string;
   action?: { label: string; onClick: () => void };
@@ -251,12 +255,14 @@ export function PracticeGame() {
     card = {
       eyebrow: "WebGL unavailable",
       title: "Your court couldn’t load.",
+      kana: "エラー",
       body: "Try a browser with WebGL enabled, then reload this page.",
     };
   } else if (help) {
     card = {
       eyebrow: "The basics",
       title: "Controls",
+      kana: "あそびかた",
       body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim and curve. Flick up for power and topspin. Use the pause button for a break. Misses feed a new ball.",
       note: "Desktop shortcuts: arrows / WASD to move · Space to swing · P to pause.",
       action: { label: "Close", onClick: closeHelp },
@@ -265,6 +271,7 @@ export function PracticeGame() {
     card = {
       eyebrow: court.name,
       title: "Paused",
+      kana: "一時停止",
       body: "Resume to continue the rally.",
       action: { label: "Resume", onClick: togglePause },
     };
@@ -272,8 +279,9 @@ export function PracticeGame() {
     card = {
       eyebrow: court.name,
       title: "Table tennis",
+      kana: "卓球",
       body: "Play against AI. Drag a finger to move your paddle; flick up to hit harder.",
-      action: { label: "Start playing", onClick: start },
+      action: { label: "Push start", onClick: start },
     };
   }
 
@@ -282,20 +290,25 @@ export function PracticeGame() {
       <header className="practice-header">
         <a className="practice-brand" href="/" aria-label="justpingpong home">
           <span className="brand-mark">
-            <CircleDot size={21} strokeWidth={1.8} />
+            <PixelIcon name="paddle" />
           </span>
-          justpingpong<span className="brand-period">.</span>
+          <span className="brand-name">
+            justpingpong<span className="brand-period">.</span>
+          </span>
+          <span className="brand-kana" lang="ja" aria-hidden="true">
+            ジャストピンポン
+          </span>
         </a>
         <div className="practice-actions">
           <button onClick={toggleHelp} aria-label="How to play" aria-expanded={help}>
-            <CircleHelp size={19} />
+            <PixelIcon name="help" />
           </button>
           <button
             onClick={togglePause}
             disabled={hud.phase === "ready" || error}
             aria-label={hud.phase === "paused" ? "Resume game" : "Pause game"}
           >
-            {hud.phase === "paused" ? <Play size={18} /> : <Pause size={18} />}
+            <PixelIcon name={hud.phase === "paused" ? "play" : "pause"} />
           </button>
           <button
             onClick={restart}
@@ -303,7 +316,7 @@ export function PracticeGame() {
             aria-label="Restart rally"
             title="Restart rally"
           >
-            <RotateCcw size={18} />
+            <PixelIcon name="restart" />
           </button>
         </div>
       </header>
@@ -324,29 +337,35 @@ export function PracticeGame() {
         <div className="court-grade" aria-hidden="true" />
         <div className="practice-stats" aria-label="Practice statistics">
           <div>
-            <span>Returns</span>
-            <strong key={hud.rally}>{hud.rally}</strong>
+            <span>Rally</span>
+            <strong key={hud.rally}>
+              <Score value={hud.rally} />
+            </strong>
           </div>
           <div>
-            <span>Best</span>
-            <strong>{hud.best}</strong>
+            <span>Hi-score</span>
+            <strong>
+              <Score value={hud.best} />
+            </strong>
           </div>
         </div>
 
         {card && (
           <div className="practice-overlay">
             <div className="practice-card">
-              <span className="card-flower" aria-hidden="true">
-                ✿
-              </span>
               <span className="card-eyebrow">{card.eyebrow}</span>
               <h2>{card.title}</h2>
+              <span className="card-kana" lang="ja" aria-hidden="true">
+                {card.kana}
+              </span>
               <p>{card.body}</p>
               {card.note && <p className="keyboard-help">{card.note}</p>}
               {card.action && (
                 <button className="play-button" onClick={card.action.onClick}>
+                  <span className="play-cursor">
+                    <PixelIcon name="play" />
+                  </span>
                   {card.action.label}
-                  <ArrowUpRight size={19} />
                 </button>
               )}
             </div>
@@ -365,17 +384,17 @@ export function PracticeGame() {
 
       <footer className="practice-footer">
         <h1 className="footer-note">
-          <span aria-hidden="true">✿</span> {court.name} <span>· AI opponent</span>
+          <PixelIcon name="sakura" /> {court.name} <span>1P vs CPU</span>
         </h1>
         <div className="control-hints">
           <span>
-            <Move size={16} /> Drag to move
+            <PixelIcon name="move" /> Drag to move
           </span>
           <span>
-            <ArrowUpRight size={17} /> Flick up
+            <PixelIcon name="flick" /> Flick up
           </span>
           <button onClick={toggleHelp}>
-            How to play <CircleHelp size={15} />
+            How to play <PixelIcon name="help" />
           </button>
           <button
             onClick={toggleMuted}
@@ -383,7 +402,7 @@ export function PracticeGame() {
             aria-pressed={muted}
             title={muted ? "Unmute sound" : "Mute sound"}
           >
-            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+            <PixelIcon name={muted ? "mute" : "sound"} />
           </button>
         </div>
       </footer>

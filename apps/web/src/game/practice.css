@@ -1,20 +1,70 @@
+/* 80s Japanese arcade cabinet UI: bitmap fonts, notched pixel frames, hard shadows, no tweening. */
 .practice-app {
-  --ink: #535365;
-  --coral: #f17464;
-  --paper: #fff9ed;
+  /* One "pixel" of the frames and the sprite scale; the frames sit 2 dots outside each box. */
+  --px: 3px;
+  --dot: 3px;
+  --ink: #fff7e8;
+  --muted: #b9b4e0;
+  --panel: #17134aeb;
+  --outline: #0b0920;
+  --red: #ff3d5a;
+  --yellow: #ffd23f;
+  --cyan: #4fe3ff;
+  --pink: #ff9cc0;
+  --arcade: "Press Start 2P", ui-monospace, monospace;
+  --gothic: "DotGothic16", ui-monospace, monospace;
   position: relative;
   height: 100svh;
   min-height: 420px;
   overflow: hidden;
   color: var(--ink);
   background: #9fcce8;
-  font-family: "Trebuchet MS", "Arial Rounded MT Bold", Arial, sans-serif;
+  font-family: var(--arcade);
+  -webkit-font-smoothing: none;
 }
+.pixel-icon {
+  display: block;
+  flex-shrink: 0;
+  width: calc(var(--w) * var(--dot));
+  height: calc(var(--h) * var(--dot));
+}
+
+/* Notched pixel frame: a light ring and a dark outline drawn with hard, unblurred shadows. Their
+   missing corners give the stepped "rounded" corners of sprite windows. */
+.practice-actions button,
+.practice-stats div,
+.practice-card,
+.practice-app .play-button,
+.live-status,
+.footer-note,
+.control-hints {
+  --frame: #f4f1ff;
+  --edge: var(--outline);
+  background:
+    repeating-linear-gradient(180deg, #ffffff0a 0 2px, transparent 2px 4px),
+    var(--fill, var(--panel));
+  box-shadow:
+    var(--bevel, 0 0 #0000),
+    var(--px) 0 var(--frame),
+    calc(-1 * var(--px)) 0 var(--frame),
+    0 var(--px) var(--frame),
+    0 calc(-1 * var(--px)) var(--frame),
+    calc(2 * var(--px)) 0 var(--edge),
+    calc(-2 * var(--px)) 0 var(--edge),
+    0 calc(2 * var(--px)) var(--edge),
+    0 calc(-2 * var(--px)) var(--edge),
+    var(--px) var(--px) var(--edge),
+    calc(-1 * var(--px)) var(--px) var(--edge),
+    var(--px) calc(-1 * var(--px)) var(--edge),
+    calc(-1 * var(--px)) calc(-1 * var(--px)) var(--edge),
+    0 calc(4 * var(--px)) var(--lift, #0b092066);
+}
+
 .practice-header {
   position: absolute;
-  top: 22px;
-  right: 24px;
-  left: 24px;
+  top: 26px;
+  right: 30px;
+  left: 30px;
   height: 52px;
   z-index: 3;
   display: flex;
@@ -25,72 +75,90 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto;
   align-items: center;
-  color: #fffaf1;
+  column-gap: 12px;
+  row-gap: 6px;
+  color: var(--ink);
   text-decoration: none;
-  font-size: 25px;
-  font-weight: 900;
-  letter-spacing: -1px;
-  text-shadow: 0 2px 6px #46628666;
-  height: 48px;
   pointer-events: auto;
 }
 .brand-mark {
-  display: flex;
-  margin-right: 7px;
+  grid-row: span 2;
+  --dot: 4px;
+  color: var(--red);
+  filter: drop-shadow(var(--px) 0 var(--outline)) drop-shadow(calc(-1 * var(--px)) 0 var(--outline))
+    drop-shadow(0 var(--px) var(--outline)) drop-shadow(0 calc(-1 * var(--px)) var(--outline));
+}
+/* Banded title lettering, like a marquee logo, with a black outline and a red drop. */
+.brand-name {
+  font-size: 24px;
+  line-height: 1;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #fff6a8 0 30%, var(--yellow) 30% 60%, #ff9a2e 60%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(2px 0 var(--outline)) drop-shadow(-2px 0 var(--outline))
+    drop-shadow(0 2px var(--outline)) drop-shadow(0 -2px var(--outline))
+    drop-shadow(0 3px var(--red));
 }
 .brand-period {
-  color: #ffdd9b;
+  -webkit-text-fill-color: var(--red);
+}
+.brand-kana {
+  font-family: var(--gothic);
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 6px;
+  color: var(--ink);
+  text-shadow:
+    2px 0 var(--outline),
+    -2px 0 var(--outline),
+    0 2px var(--outline),
+    0 -2px var(--outline);
 }
 .practice-actions {
   display: flex;
-  gap: 10px;
+  gap: 22px;
   pointer-events: auto;
 }
 .practice-app button {
   cursor: pointer;
-  transition:
-    transform 150ms,
-    background 150ms,
-    box-shadow 150ms;
 }
 .practice-app button:focus-visible,
 .practice-brand:focus-visible {
-  outline: 3px solid #ea876a;
-  outline-offset: 4px;
+  outline: var(--px) dashed var(--yellow);
+  outline-offset: calc(4 * var(--px));
 }
 .practice-actions button {
   display: grid;
   place-items: center;
   width: 48px;
   height: 48px;
-  border: 2px solid #ffffffb3;
-  border-radius: 50%;
-  background: var(--paper);
-  box-shadow:
-    0 4px 0 #d5b4a261,
-    0 5px 15px #4d628024;
-  color: var(--coral);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  color: var(--ink);
+  --bevel: inset 0 calc(-1 * var(--px)) #0006;
 }
-.practice-actions button svg {
-  width: 21px;
-  height: 21px;
-  stroke-width: 2.8;
+.practice-actions button:hover:not(:disabled) {
+  --frame: var(--yellow);
+  color: var(--yellow);
 }
-.practice-actions button:hover {
-  background: #fff0db;
-  transform: translateY(-2px) rotate(-5deg);
-}
-.practice-actions button:active {
-  transform: translateY(2px);
-  box-shadow: none;
+.practice-actions button:active:not(:disabled),
+.practice-app .play-button:active {
+  transform: translateY(calc(2 * var(--px)));
+  --lift: transparent;
+  --bevel: inset 0 var(--px) #0006;
 }
 .practice-actions button:disabled {
-  opacity: 0.5;
   cursor: default;
-  transform: none;
+  color: #7a74a8;
+  --frame: #8e88b8;
 }
+
 .practice-stage {
   position: absolute;
   inset: 0;
@@ -130,312 +198,336 @@
   --vignette: #0d1236a6;
   --grade-top: #3a3f9a26;
 }
+
+/* Arcade HUD: a red caption over a big score, like 1UP / HI-SCORE. */
 .practice-stats {
   position: absolute;
-  top: 22px;
-  left: 24px;
+  top: 26px;
+  left: 30px;
   display: flex;
-  gap: 10px;
+  gap: 22px;
   pointer-events: none;
 }
 .practice-stats div {
   display: flex;
-  gap: 12px;
-  align-items: center;
-  background: var(--paper);
-  border: 2px solid #ffffffb3;
-  box-shadow:
-    0 4px 0 #d5b4a261,
-    0 5px 15px #4d628024;
-  border-radius: 30px;
-  padding: 7px 20px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  min-width: 112px;
   min-height: 48px;
+  padding: 8px 12px;
 }
-.practice-stats span {
-  font-size: 14px;
-  font-weight: 700;
+.practice-stats div > span {
+  font-size: 8px;
+  line-height: 1;
+  color: var(--red);
+  text-transform: uppercase;
+}
+.practice-stats div + div > span {
+  color: var(--cyan);
 }
 .practice-stats strong {
-  color: var(--coral);
-  font-size: 27px;
+  font-size: 24px;
   line-height: 1;
-  font-weight: 900;
-  font-variant-numeric: tabular-nums;
-  animation: score-pop 200ms ease-out;
+  font-weight: 400;
+  color: var(--ink);
+  animation: score-pop 160ms steps(2, jump-none);
 }
+.score-pad {
+  color: #ffffff38;
+}
+
 .practice-overlay {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #889fc21a;
+  background: #0b09202e;
   padding: 20px;
 }
 .practice-card {
   position: relative;
-  width: 350px;
-  padding: 32px;
+  width: 380px;
+  padding: 28px 30px 30px;
   text-align: center;
-  background: #fffaf1f5;
-  border: 3px solid #fff;
-  border-radius: 30px;
-  box-shadow:
-    0 8px 0 #d4a99450,
-    0 16px 60px #34496b35;
-}
-.card-flower {
-  display: block;
-  font-size: 49px;
-  color: #efa1b1;
-  line-height: 1;
-  margin-bottom: 17px;
-  text-shadow: 2px 3px 0 #ffe1d9;
+  --lift: #0b092099;
 }
 .card-eyebrow {
-  font-size: 10px;
-  letter-spacing: 2px;
+  display: block;
+  font-size: 8px;
+  line-height: 1.5;
   text-transform: uppercase;
-  color: #bd837b;
-  font-weight: 800;
+  color: var(--cyan);
 }
 .practice-card h2 {
-  margin: 9px 0 12px;
-  font-size: 29px;
-  font-weight: 900;
-  letter-spacing: -1px;
-  line-height: 1.15;
+  margin: 14px 0 0;
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: var(--yellow);
+  text-shadow: 3px 3px 0 var(--red);
+}
+.card-kana {
+  display: block;
+  margin: 10px 0 16px;
+  font-family: var(--gothic);
+  font-size: 16px;
+  letter-spacing: 4px;
+  color: var(--pink);
 }
 .practice-card p {
-  color: #83818c;
-  font-size: 13px;
-  line-height: 1.7;
-  margin: 0 0 20px;
+  margin: 0 0 22px;
+  font-family: var(--gothic);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted);
 }
 .practice-card .keyboard-help {
   display: none;
-  font-size: 11px;
-  padding-top: 12px;
-  border-top: 1px solid #eee0d7;
+  padding-top: 14px;
+  border-top: var(--px) dashed #ffffff26;
+  font-size: 14px;
 }
 @media (hover: hover) and (pointer: fine) {
   .practice-card .keyboard-help {
     display: block;
   }
 }
+/* A red cabinet button with a blinking selector, like a PUSH START prompt. */
 .practice-app .play-button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 14px;
   width: 100%;
+  min-height: 52px;
   padding: 14px 18px;
   border: none;
-  border-radius: 22px;
-  background: var(--coral);
+  border-radius: 0;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  text-transform: uppercase;
   color: #fff;
-  font-size: 15px;
-  font-weight: 800;
-  box-shadow: 0 4px 0 #d65e57;
+  text-shadow: 2px 2px 0 #8a0f26;
+  --fill: var(--red);
+  --bevel: inset 0 var(--px) #ff8fa0, inset 0 calc(-1 * var(--px)) #b5122f;
 }
 .practice-app .play-button:hover {
-  transform: translateY(-2px);
-  background: #f58b70;
+  --frame: var(--yellow);
+  --fill: #ff5470;
 }
-.practice-app .play-button:active {
-  transform: translateY(3px);
-  box-shadow: none;
+.play-cursor {
+  --dot: 2px;
+  color: var(--yellow);
+  filter: drop-shadow(2px 2px 0 #8a0f26);
+  animation: blink 1s steps(1) infinite;
 }
+
 .court-bottom {
   position: absolute;
-  bottom: 80px;
-  left: 24px;
-  right: 24px;
+  bottom: 88px;
+  left: 30px;
+  right: 30px;
   display: flex;
   pointer-events: none;
 }
 .live-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  background: #fff9ede8;
-  box-shadow: 0 2px 8px #34496b15;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--yellow);
 }
 .status-dot {
   width: 6px;
   height: 6px;
-  background: #b9afaa;
-  border-radius: 50%;
+  background: var(--yellow);
   flex-shrink: 0;
+  animation: blink 0.5s steps(1) infinite;
 }
+
 .practice-footer {
   position: absolute;
-  bottom: 20px;
-  left: 24px;
-  right: 24px;
+  bottom: 26px;
+  left: 30px;
+  right: 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 15px;
+  gap: 22px;
   pointer-events: none;
 }
 .footer-note {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   margin: 0;
-  background: #fff9edeb;
-  padding: 10px 15px;
-  border-radius: 22px;
-  font-size: 12px;
-  font-weight: 700;
-}
-.footer-note > span:first-child {
-  color: #d8829d;
-  font-size: 20px;
-  line-height: 1;
-}
-.footer-note > span:last-child {
-  color: #a29296;
+  padding: 10px 12px;
   font-size: 10px;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: uppercase;
+  --dot: 2px;
+}
+.footer-note .pixel-icon {
+  color: var(--pink);
+}
+.footer-note > span {
+  color: var(--cyan);
+  font-size: 8px;
 }
 .control-hints {
   display: flex;
   align-items: center;
   gap: 20px;
-  padding: 12px 18px;
-  border-radius: 24px;
-  background: #fff9edeb;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 10px 14px;
+  font-size: 8px;
+  line-height: 1;
+  text-transform: uppercase;
   pointer-events: auto;
+  --dot: 2px;
 }
 .control-hints span,
 .control-hints button {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
-.control-hints svg {
-  color: #cf8e82;
+.control-hints span .pixel-icon {
+  color: var(--cyan);
 }
 .control-hints button {
   border: none;
-  border-left: 1px solid #e8d4c8;
-  padding: 0 0 0 15px;
+  border-left: var(--px) solid #ffffff26;
+  border-radius: 0;
+  padding: 0 0 0 16px;
   background: transparent;
   font: inherit;
+  text-transform: inherit;
   color: inherit;
 }
 .control-hints button:hover {
-  color: var(--coral);
+  color: var(--yellow);
 }
+
 @keyframes score-pop {
   from {
-    transform: scale(1.2);
+    transform: scale(1.3);
   }
   to {
     transform: scale(1);
   }
 }
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 @media (max-width: 700px) {
   .practice-header {
-    top: 16px;
-    left: 14px;
-    right: 14px;
-    height: 100px;
+    top: 18px;
+    left: 18px;
+    right: 18px;
+    height: 112px;
     align-items: flex-end;
   }
   .practice-brand {
     top: 0;
-    font-size: 26px;
+    column-gap: 10px;
+  }
+  .brand-mark {
+    --dot: 3px;
+  }
+  .brand-name {
+    font-size: 16px;
+  }
+  .brand-kana {
+    font-size: 12px;
+    letter-spacing: 4px;
   }
   .practice-actions {
-    gap: 7px;
+    gap: 18px;
   }
   .practice-actions button {
-    width: 40px;
-    height: 40px;
-  }
-  .practice-actions button svg {
-    width: 18px;
-    height: 18px;
+    width: 42px;
+    height: 42px;
+    --dot: 2px;
   }
   .practice-stats {
-    top: 76px;
-    left: 14px;
-    gap: 7px;
+    top: 88px;
+    left: 18px;
+    gap: 18px;
   }
   .practice-stats div {
-    gap: 7px;
-    padding: 7px 12px;
-    min-height: 40px;
-  }
-  .practice-stats span {
-    font-size: 11px;
+    min-width: 0;
+    min-height: 42px;
+    padding: 6px 9px;
   }
   .practice-stats strong {
-    font-size: 21px;
+    font-size: 16px;
   }
   .practice-card {
-    width: 310px;
-    padding: 25px;
+    width: 316px;
+    padding: 22px 20px 24px;
   }
   .practice-card h2 {
-    font-size: 26px;
+    font-size: 16px;
+  }
+  .card-kana {
+    font-size: 14px;
+    margin-bottom: 12px;
   }
   .practice-card p {
+    font-size: 14px;
+  }
+  .practice-app .play-button {
     font-size: 12px;
   }
   .court-bottom {
-    left: 14px;
-    right: 14px;
+    left: 18px;
+    right: 18px;
   }
   .live-status {
-    font-size: 10px;
-    padding: 9px 12px;
+    font-size: 8px;
     max-width: 255px;
   }
   .practice-footer {
-    left: 14px;
-    right: 14px;
+    left: 18px;
+    right: 18px;
     justify-content: center;
   }
   .footer-note {
     display: none;
   }
   .control-hints {
-    gap: 14px;
-    font-size: 10px;
-    padding: 13px 15px;
+    gap: 12px;
+    padding: 8px 12px;
   }
   .control-hints span {
-    gap: 5px;
+    gap: 6px;
   }
   .control-hints button {
     font-size: 0;
     padding-left: 10px;
     gap: 0;
   }
-  .control-hints button svg {
-    width: 18px;
-    height: 18px;
-  }
 }
 @media (max-width: 360px) {
-  .practice-actions button {
-    width: 34px;
-    height: 40px;
-  }
-  .practice-stats div {
-    padding: 7px 9px;
-  }
   .practice-actions {
-    gap: 5px;
+    gap: 14px;
+  }
+  .practice-actions button {
+    width: 36px;
+  }
+  .practice-stats {
+    gap: 14px;
   }
 }
 @media (pointer: coarse) {
@@ -452,23 +544,19 @@
 }
 @media (max-height: 560px) {
   .practice-card {
-    padding: 20px;
-  }
-  .card-flower {
-    display: none;
+    padding: 18px 20px 20px;
   }
   .court-bottom {
-    bottom: 60px;
+    bottom: 66px;
   }
   .practice-footer {
-    bottom: 10px;
+    bottom: 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .practice-app button {
-    transition: none;
-  }
-  .practice-stats strong {
+  .practice-stats strong,
+  .play-cursor,
+  .status-dot {
     animation: none;
   }
 }

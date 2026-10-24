@@ -14,6 +14,8 @@
     "env:generate": "varlock codegen"
   },
   "dependencies": {
+    "@fontsource/dotgothic16": "^5.3.1",
+    "@fontsource/press-start-2p": "^5.3.0",
     "@justpingpong/api": "workspace:*",
     "@justpingpong/ui": "workspace:*",
     "@orpc/client": "catalog:",
