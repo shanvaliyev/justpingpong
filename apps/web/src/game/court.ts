@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-import { BALL_RADIUS, TABLE, type PracticePhysics } from "./physics";
+import { BALL_RADIUS, TABLE, type Impact, type PracticePhysics } from "./physics";
 import { createRacket } from "./racket";
 
 export function createCourt(host: HTMLElement, game: PracticePhysics) {
@@ -105,6 +105,47 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
   shadow.rotation.x = -Math.PI / 2;
   scene.add(shadow);
 
+  // Small, short-lived contact rings, rather than camera shake or a persistent trail.
+  const pulses = Array.from({ length: 4 }, () => {
+    const mesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.035, 0.045, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xffedbd,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    mesh.visible = false;
+    scene.add(mesh);
+    return { mesh, age: 1, strength: 0 };
+  });
+  let nextPulse = 0;
+  let audio: AudioContext | undefined;
+  let volume: GainNode | undefined;
+  let muted = false;
+  const sound = (impact: Impact) => {
+    if (!audio || !volume || muted || audio.state !== "running") return;
+    const table = impact.surface === "table";
+    const duration = table ? 0.035 : 0.055;
+    const oscillator = audio.createOscillator();
+    const envelope = audio.createGain();
+    const now = audio.currentTime;
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(table ? 1150 : 620, now);
+    oscillator.frequency.exponentialRampToValueAtTime(table ? 700 : 240, now + duration);
+    envelope.gain.setValueAtTime(0, now);
+    envelope.gain.linearRampToValueAtTime(Math.min(0.16, impact.speed * 0.025), now + 0.002);
+    envelope.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    oscillator.connect(envelope).connect(volume);
+    oscillator.onended = () => {
+      oscillator.disconnect();
+      envelope.disconnect();
+    };
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+  };
+
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
     renderer.setSize(width, height);
@@ -121,9 +162,27 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
   const raycaster = new THREE.Raycaster();
   const paddlePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -1.53);
   const point = new THREE.Vector3();
-  let previousVz = 0;
+  const position = new THREE.Vector3();
 
   return {
+    enableAudio() {
+      // Browsers allow audio only after a user gesture. Audio failure must not stop play.
+      try {
+        if (!audio) {
+          audio = new AudioContext();
+          volume = audio.createGain();
+          volume.gain.value = muted ? 0 : 0.6;
+          volume.connect(audio.destination);
+        }
+        if (audio.state === "suspended") void audio.resume().catch(() => {});
+      } catch {
+        /* Silent play is still available. */
+      }
+    },
+    setMuted(value: boolean) {
+      muted = value;
+      if (volume) volume.gain.value = muted ? 0 : 0.6;
+    },
     aim(clientX: number, clientY: number, touch: boolean) {
       const rect = host.getBoundingClientRect();
       raycaster.setFromCamera(
@@ -138,26 +197,46 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
         game.target.y = point.y;
       }
     },
-    render(dt: number) {
-      // A reversed ball near a racket means that racket just struck it (net bounces are mid-table).
-      const vz = game.velocity.z;
-      if (previousVz > 0 && vz < 0 && game.ball.z > 1) player.hit(Math.min(1, -vz / 4));
-      if (previousVz < 0 && vz > 0 && game.ball.z < -1) opponent.hit(Math.min(1, vz / 4));
-      previousVz = vz;
-      player.update(game.player, dt);
-      opponent.update(game.opponent, dt);
-      ball.position.copy(game.ball);
+    render(dt: number, alpha: number) {
+      if (game.phase !== "playing") {
+        dt = 0;
+        alpha = 1;
+      }
+      for (const impact of game.impacts) {
+        const strength = Math.min(1, impact.speed / 6);
+        if (impact.surface === "player") player.hit(strength);
+        if (impact.surface === "opponent") opponent.hit(strength);
+        const pulse = pulses[nextPulse++ % pulses.length];
+        pulse.age = 0;
+        pulse.strength = strength;
+        pulse.mesh.position.copy(impact.position);
+        if (impact.surface === "table") pulse.mesh.rotation.set(-Math.PI / 2, 0, 0);
+        else pulse.mesh.quaternion.copy(camera.quaternion);
+        sound(impact);
+      }
+      game.impacts.length = 0;
+      for (const pulse of pulses) {
+        pulse.age += dt;
+        const progress = pulse.age / 0.18;
+        pulse.mesh.visible = progress < 1;
+        pulse.mesh.scale.setScalar(1 + progress * (1 + pulse.strength));
+        pulse.mesh.material.opacity = Math.max(0, 1 - progress) * 0.65;
+      }
+      player.update(position.lerpVectors(game.previousPlayer, game.player, alpha), dt);
+      opponent.update(position.lerpVectors(game.previousOpponent, game.opponent, alpha), dt);
+      ball.position.lerpVectors(game.previousBall, game.ball, alpha);
       ball.visible = game.waiting <= 0;
       shadow.visible =
         ball.visible &&
-        Math.abs(game.ball.x) < TABLE.halfWidth &&
-        Math.abs(game.ball.z) < TABLE.halfLength;
-      shadow.position.set(game.ball.x, 0.005, game.ball.z);
-      shadow.scale.setScalar(1 + game.ball.y * 0.5);
+        Math.abs(ball.position.x) < TABLE.halfWidth &&
+        Math.abs(ball.position.z) < TABLE.halfLength;
+      shadow.position.set(ball.position.x, 0.005, ball.position.z);
+      shadow.scale.setScalar(1 + ball.position.y * 0.5);
       renderer.render(scene, camera);
     },
     dispose() {
       observer.disconnect();
+      if (audio) void audio.close().catch(() => {});
       player.dispose();
       opponent.dispose();
       envMap.dispose();

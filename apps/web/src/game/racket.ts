@@ -263,7 +263,7 @@ export function createRacket(options: {
       }
       last = local;
       time += dt;
-      // Hysteresis stops the racket flipping back and forth around the middle.
+      // Hysteresis stops the red/black flip chattering as the hand crosses the middle.
       if (backhand ? local.x > 0.08 : local.x < -0.05) backhand = !backhand;
       if (first) backhand = local.x < 0;
 
@@ -274,14 +274,9 @@ export function createRacket(options: {
           clamp(Math.atan2(HAND.x - local.x, local.y - HAND.y), -1, 1) +
           clamp(velocity.x * 0.1, -0.35, 0.35) +
           Math.sin(time * 1.3 + phase) * 0.02,
-        // Slightly closed face, closing more on high balls and as the swing drives through.
-        pitch:
-          -0.18 -
-          (local.y - 0.36) * 0.45 -
-          clamp(forward * 0.1, -0.15, 0.35) -
-          clamp(velocity.y * 0.05, -0.15, 0.15) +
-          Math.sin(time * 1.9 + phase) * 0.025,
-        // Angle the face towards the middle of the table and follow through across the body.
+        // Open for a block, close for a drive. The rubber-side flip is visual only;
+        // neither colour changes the rebound or the blade-centred contact point.
+        pitch: 0.11 - clamp(forward * 0.1, 0, 0.35) + Math.sin(time * 1.9 + phase) * 0.012,
         yaw:
           forehandYaw +
           (backhand ? Math.PI : 0) +

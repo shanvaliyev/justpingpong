@@ -1,4 +1,14 @@
-import { ArrowUpRight, CircleDot, CircleHelp, Move, Pause, Play, RotateCcw } from "lucide-react";
+import {
+  ArrowUpRight,
+  CircleDot,
+  CircleHelp,
+  Move,
+  Pause,
+  Play,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { createCourt } from "./court";
@@ -24,17 +34,20 @@ const normalizeKey = (key: string) => KEY_ALIASES[key] ?? key.toLowerCase();
 
 export function PracticeGame() {
   const host = useRef<HTMLDivElement>(null);
+  const courtRef = useRef<ReturnType<typeof createCourt> | null>(null);
   const [game] = useState(() => new PracticePhysics());
   const [scene, setScene] = useState(randomCourt);
   const [hud, setHud] = useState({ phase: game.phase, rally: 0, best: 0, message: "" });
   const [help, setHelp] = useState(false);
   const [error, setError] = useState(false);
+  const [muted, setMuted] = useState(false);
 
   useEffect(() => {
     const element = host.current!;
     let court: ReturnType<typeof createCourt>;
     try {
       court = createCourt(element, game);
+      courtRef.current = court;
     } catch {
       setError(true);
       return;
@@ -64,7 +77,7 @@ export function PracticeGame() {
         game.step();
         accumulator -= STEP;
       }
-      court.render(elapsed);
+      court.render(elapsed, accumulator / STEP);
       if (time - lastHud > 80) {
         lastHud = time;
         setHud({ phase: game.phase, rally: game.rally, best: game.best, message: game.message });
@@ -117,6 +130,8 @@ export function PracticeGame() {
 
     const listeners = new AbortController();
     const { signal } = listeners;
+    window.addEventListener("pointerdown", court.enableAudio, { signal });
+    window.addEventListener("keydown", court.enableAudio, { signal });
     element.addEventListener("pointerdown", onPointerDown, { signal });
     element.addEventListener("pointermove", onPointerMove, { signal });
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
@@ -132,8 +147,13 @@ export function PracticeGame() {
       listeners.abort();
       cancelAnimationFrame(frame);
       court.dispose();
+      courtRef.current = null;
     };
   }, [game]);
+
+  useEffect(() => {
+    courtRef.current?.setMuted(muted);
+  }, [muted]);
 
   const focusCourt = () => host.current?.focus({ preventScroll: true });
   const start = () => {
@@ -170,8 +190,8 @@ export function PracticeGame() {
       ? {
           eyebrow: "The basics",
           title: "Controls",
-          body: "Move your mouse or drag a finger to aim. Hold the paddle still to block; flick upward to hit harder. Returns use assisted aiming. Misses automatically feed a new ball.",
-          note: "Keyboard: arrow keys / WASD to move · Space to swing · P to pause.",
+          body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim. Flick up for power. Use the pause button for a break. Misses feed a new ball.",
+          note: "Desktop shortcuts: arrows / WASD to move · Space to swing · P to pause.",
           action: { label: "Close", onClick: closeHelp },
         }
       : hud.phase === "paused"
@@ -185,7 +205,7 @@ export function PracticeGame() {
           ? {
               eyebrow: scene.name,
               title: "Table tennis",
-              body: "Play against AI. Move or drag to position your paddle; flick upward to swing.",
+              body: "Play against AI. Drag a finger to move your paddle; flick up to hit harder.",
               action: { label: "Start playing", onClick: start },
             }
           : undefined;
@@ -231,7 +251,7 @@ export function PracticeGame() {
           className="court-canvas"
           tabIndex={0}
           role="application"
-          aria-label="Table tennis court. Move the mouse or drag to position your paddle. Flick upward or press Space to swing. Arrow keys move the paddle; P pauses."
+          aria-label="Table tennis court. Drag a finger to move your paddle. Swipe sideways on contact to aim; flick up to hit harder. Use the pause button to pause."
         />
         <div className="practice-stats" aria-label="Practice statistics">
           <div>
@@ -280,13 +300,24 @@ export function PracticeGame() {
         </h1>
         <div className="control-hints">
           <span>
-            <Move size={16} /> Move / drag to aim
+            <Move size={16} /> Drag to move
           </span>
           <span>
-            <ArrowUpRight size={17} /> Flick up to swing
+            <ArrowUpRight size={17} /> Flick up
           </span>
           <button onClick={toggleHelp}>
             How to play <CircleHelp size={15} />
+          </button>
+          <button
+            onClick={() => {
+              setMuted(!muted);
+              focusCourt();
+            }}
+            aria-label="Mute impact sounds"
+            aria-pressed={muted}
+            title={muted ? "Unmute impact sounds" : "Mute impact sounds"}
+          >
+            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
         </div>
       </footer>

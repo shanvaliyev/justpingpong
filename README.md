@@ -30,14 +30,17 @@ pnpm install
 
 Run `pnpm dev:web` and open the web app. The home page is a first-person table-tennis practice game; it needs no API server, database, account, or environment variables.
 
-- Move the mouse or drag one finger to position the floating paddle. Flick upward to swing forward; a stationary paddle can block.
-- Keyboard: arrow keys / WASD to move, Space to swing, P to pause.
+- Mobile-first: drag one finger to position the floating paddle. Flick upward to swing forward; a stationary paddle can block. Start, pause, resume, restart, and mute all have touch controls.
+- Brush left or right at contact to place a shot. Off-centre hits also steer the ball; stronger forward strokes drive it faster and flatter. Shots can go wide, long, or into the net.
+- Optional desktop controls: move the mouse, or use arrow keys / WASD to move, Space to swing, P to pause. Keyboard hints are hidden on touch devices; no game action requires a keyboard.
 - A friendly AI returns the ball. Misses automatically feed a new ball. Restart clears the current rally, but keeps the session best until the page reloads.
-- Physics run at 120 Hz with gravity, swept paddle/net contacts, and table bounces. Returns have assisted aiming; this is an arcade prototype, without spin, regulation scoring, or multiplayer. The racket's pose (handle angle, forehand/backhand turn, swing follow-through, contact recoil) is visual only, not a spin control.
+- Physics run at 120 Hz with real gravity, time-of-impact paddle/net/table contacts, momentum-based player returns, and interpolated rendering. Only the feed and AI choose landing points. Contact-offset steering and a forgiving hitbox keep this an arcade game, without spin, regulation scoring, or multiplayer.
+- Racket recoil, brief contact rings, and distinct racket/table sounds mark impacts. The speaker button mutes sound. There is no ball trail.
+- The red/black forehand/backhand flip follows the paddle across the body. This visual effect does not change the collision response.
 - A new game randomly selects the daytime sakura court, golden-hour seaside, or blue-hour Tokyo rooftop. Manual restart picks again (repeats are possible); misses and pause/resume keep the current scene.
 - The court backgrounds are generated illustrations; the table, ball, paddles, and shadows render in Three.js.
 
-Check the web build and types with `pnpm --filter web check-types`.
+Check the web build and types with `pnpm --filter web check-types`. Run physics regression tests with `pnpm --filter web test` (Node 22.18+ for native TypeScript loading).
 
 ## Database Setup
 
