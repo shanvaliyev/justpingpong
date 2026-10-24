@@ -115,7 +115,7 @@ Run standalone Node/Bun tools that use Varlock from the owning app directory so 
 
 `alchemy profile edit` stores the selected Axiom, Cloudflare, Neon, PlanetScale, and/or Prisma provider profiles under `~/.alchemy`; no provider-specific setup command is required by this scaffold.
 
-Deploys are staged and default to a personal `dev_<username>` stage. For production, run the deploy with an explicit stage from `packages/infra`:
+Deploys are staged and default to a personal `live_<username>` stage; `alchemy dev` defaults to `dev_<username>`. Keep using the explicit `production` stage to update the existing production stack:
 
 ```bash
 cd packages/infra && pnpm exec alchemy deploy --stage production
@@ -123,7 +123,17 @@ cd packages/infra && pnpm exec alchemy deploy --stage production
 
 ### Production origins
 
-- Required after the first deploy: set `CORS_ORIGIN` in `apps/server/.env` to the exact deployed web origin, such as `https://app.example.com`, then deploy the server again.
+The stack declares `justpingpong.com` for the web app and `api.justpingpong.com` for the API. Alchemy manages their DNS records and HTTPS certificates in the existing Cloudflare zone; the zone must be active in the deploying account, with provider credentials authorized to attach custom domains. `alchemy dev` serves local URLs without attaching these deployed domains. Before adding another cloud deployment stage, give it separate domains or make these declarations production-only so it does not request the same hostnames.
+
+Before deploying production, set this in your ignored `apps/server/.env` (or supply it through the deployment environment):
+
+```dotenv
+CORS_ORIGIN=https://justpingpong.com
+```
+
+Alchemy derives `BETTER_AUTH_URL` and `VITE_SERVER_URL` from the API's custom domain. Keep the existing `BETTER_AUTH_SECRET` unchanged. Redeploy with `pnpm run deploy --stage production` from the repository root to apply the domain configuration to the existing production stack.
+
+For local development, use `CORS_ORIGIN=http://localhost:3001` and the default dev stage, not `--stage production`.
 
 ## Git Hooks and Formatting
 

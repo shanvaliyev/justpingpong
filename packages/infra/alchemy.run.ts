@@ -10,6 +10,7 @@ export const db = Cloudflare.D1.Database("database", {
 
 export const server = Cloudflare.Worker("server", {
   main: "../../apps/server/src/index.ts",
+  domain: "api.justpingpong.com",
   compatibility: {
     flags: ["nodejs_compat"],
   },
@@ -36,6 +37,7 @@ export default Alchemy.Stack(
     const serverWorker = yield* server;
     const webWorker = yield* Cloudflare.Website.Vite("web", {
       rootDir: "../../apps/web",
+      domain: "justpingpong.com",
       assets: {
         htmlHandling: "auto-trailing-slash",
         notFoundHandling: "single-page-application",
