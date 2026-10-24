@@ -20,7 +20,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      workbox: { globPatterns: ["**/*.{js,css,html,png,webp,svg,ico}"] },
+      workbox: { globPatterns: ["**/*.{js,css,html,png,webp,svg,ico,wav}"] },
       manifest: {
         name: "justpingpong",
         short_name: "justpingpong",

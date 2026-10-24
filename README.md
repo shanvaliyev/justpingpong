@@ -35,7 +35,7 @@ Run `pnpm dev:web` and open the web app. The home page is a first-person table-t
 - Optional desktop controls: move the mouse, or use arrow keys / WASD to move, Space to swing, P to pause. Keyboard hints are hidden on touch devices; no game action requires a keyboard.
 - A friendly AI returns the ball. Misses automatically feed a new ball. Restart clears the current rally, but keeps the session best until the page reloads.
 - Physics run at 120 Hz with real gravity, time-of-impact paddle/net/table contacts, momentum-based player returns, and interpolated rendering. Only the feed and AI choose landing points. Contact-offset steering and a forgiving hitbox keep this an arcade game, without spin, regulation scoring, or multiplayer.
-- Racket recoil, brief contact rings, and distinct racket/table sounds mark impacts. The speaker button mutes sound. There is no ball trail.
+- Racket recoil, brief contact rings, and recorded racket/table sounds mark impacts. Two samples per surface, subtle pitch variation, impact-based volume, quieter opponent hits, and stereo positioning keep rallies natural. The speaker button mutes sound; synthesized impacts cover loading failures and net contacts. There is no ball trail.
 - The red/black forehand/backhand flip follows the paddle across the body. This visual effect does not change the collision response.
 - A new game randomly selects the daytime sakura court, golden-hour seaside, or blue-hour Tokyo rooftop. Manual restart picks again (repeats are possible); misses and pause/resume keep the current scene.
 - The court backgrounds are generated illustrations; the table, ball, paddles, and shadows render in Three.js.

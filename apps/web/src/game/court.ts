@@ -124,9 +124,33 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
   let audio: AudioContext | undefined;
   let volume: GainNode | undefined;
   let muted = false;
+  const samples: Record<"racket" | "table", AudioBuffer[]> = { racket: [], table: [] };
   const sound = (impact: Impact) => {
     if (!audio || !volume || muted || audio.state !== "running") return;
     const table = impact.surface === "table";
+    const clips = samples[table ? "table" : "racket"];
+    const buffer =
+      impact.surface === "net" ? undefined : clips[Math.floor(Math.random() * clips.length)];
+    if (buffer) {
+      const source = audio.createBufferSource();
+      const gain = audio.createGain();
+      const pan = audio.createStereoPanner();
+      source.buffer = buffer;
+      source.playbackRate.value = 0.97 + Math.random() * 0.06;
+      gain.gain.value =
+        Math.min(0.85, 0.18 + impact.speed * 0.1) * (impact.surface === "opponent" ? 0.72 : 1);
+      pan.pan.value = Math.max(-0.5, Math.min(0.5, (impact.position.x / TABLE.halfWidth) * 0.45));
+      source.connect(gain).connect(pan).connect(volume);
+      source.onended = () => {
+        source.disconnect();
+        gain.disconnect();
+        pan.disconnect();
+      };
+      source.start();
+      return;
+    }
+
+    // Keep a lightweight net sound, and a fallback while recordings load or if a request fails.
     const duration = table ? 0.035 : 0.055;
     const oscillator = audio.createOscillator();
     const envelope = audio.createGain();
@@ -173,6 +197,22 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
           volume = audio.createGain();
           volume.gain.value = muted ? 0 : 0.6;
           volume.connect(audio.destination);
+          const context = audio;
+          for (const kind of ["racket", "table"] as const) {
+            void Promise.all(
+              [1, 2].map(async (variant) => {
+                const response = await fetch(`/game/audio/${kind}-${variant}.wav`);
+                if (!response.ok) throw new Error("Impact recording unavailable");
+                return context.decodeAudioData(await response.arrayBuffer());
+              }),
+            )
+              .then((buffers) => {
+                samples[kind] = buffers;
+              })
+              .catch(() => {
+                /* Synthesized impacts remain available if recordings cannot load. */
+              });
+          }
         }
         if (audio.state === "suspended") void audio.resume().catch(() => {});
       } catch {
