@@ -11,16 +11,12 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { createCourt, type CourtMood } from "./court";
-import { PracticePhysics, STEP } from "./physics";
+import { createCourtAudio, type CourtAudio } from "./audio";
+import { COURT_IDS, COURTS, createCourt, type Court, type CourtId } from "./court";
+import { PracticePhysics, STEP, type Phase } from "./physics";
 import "./practice.css";
 
-const COURTS: { id: CourtMood; name: string; image: string }[] = [
-  { id: "sakura", name: "Sakura court", image: "/game/sakura-court.webp" },
-  { id: "seaside", name: "Seaside court", image: "/game/seaside-court.webp" },
-  { id: "tokyo", name: "Tokyo rooftop", image: "/game/tokyo-court.webp" },
-];
-const randomCourt = () => COURTS[Math.floor(Math.random() * COURTS.length)];
+const randomCourt = (): CourtId => COURT_IDS[Math.floor(Math.random() * COURT_IDS.length)];
 
 // Arrow keys share the WASD movement state.
 const KEY_ALIASES: Record<string, string> = {
@@ -32,28 +28,52 @@ const KEY_ALIASES: Record<string, string> = {
 const GAME_KEYS = new Set(["w", "a", "s", "d", " ", "p", "enter"]);
 const normalizeKey = (key: string) => KEY_ALIASES[key] ?? key.toLowerCase();
 
+/** Longest frame the simulation catches up on, so a stalled tab does not fast-forward. */
+const MAX_FRAME = 0.05;
+const HUD_INTERVAL = 80;
+
+type Hud = { phase: Phase; rally: number; best: number; message: string };
+const readHud = (game: PracticePhysics): Hud => ({
+  phase: game.phase,
+  rally: game.rally,
+  best: game.best,
+  message: game.nextBallIn > 0 ? "Next ball…" : game.netted ? "Net" : "",
+});
+const sameHud = (a: Hud, b: Hud) =>
+  a.phase === b.phase && a.rally === b.rally && a.best === b.best && a.message === b.message;
+
+type Card = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  note?: string;
+  action?: { label: string; onClick: () => void };
+};
+
 export function PracticeGame() {
   const host = useRef<HTMLDivElement>(null);
-  const courtRef = useRef<ReturnType<typeof createCourt> | null>(null);
+  const view = useRef<{ court: Court; audio: CourtAudio } | null>(null);
   const [game] = useState(() => new PracticePhysics());
-  const [scene, setScene] = useState(randomCourt);
-  const [hud, setHud] = useState({ phase: game.phase, rally: 0, best: 0, message: "" });
+  const [courtId, setCourtId] = useState(randomCourt);
+  const [hud, setHud] = useState(() => readHud(game));
   const [help, setHelp] = useState(false);
   const [error, setError] = useState(false);
   const [muted, setMuted] = useState(false);
+  const court = COURTS[courtId];
 
   useEffect(() => {
     const element = host.current!;
-    let court: ReturnType<typeof createCourt>;
+    let court: Court;
     try {
-      court = createCourt(element, game);
-      courtRef.current = court;
+      court = createCourt(element);
     } catch {
       setError(true);
       return;
     }
+    const audio = createCourtAudio();
+    view.current = { court, audio };
     // Warm the other backgrounds so restarting does not leave an empty court.
-    for (const { image } of COURTS) new Image().src = image;
+    for (const { image } of Object.values(COURTS)) new Image().src = image;
 
     const keys = new Set<string>();
     let activePointer: number | undefined;
@@ -64,32 +84,38 @@ export function PracticeGame() {
     let lastHud = 0;
 
     const draw = (time: number) => {
-      const elapsed = Math.min((time - previousTime) / 1000, 0.05);
-      accumulator += elapsed * court.timeScale();
+      const elapsed = Math.min((time - previousTime) / 1000, MAX_FRAME);
       previousTime = time;
-      while (accumulator >= STEP) {
-        if (game.phase === "playing") {
-          const dx = Number(keys.has("d")) - Number(keys.has("a"));
-          const dy = Number(keys.has("w")) - Number(keys.has("s"));
-          if (dx) game.target.x = game.player.x + dx * STEP * 1.8;
-          if (dy) game.target.y = game.player.y + dy * STEP * 1.8;
-        }
+      for (accumulator += elapsed * court.timeScale(); accumulator >= STEP; accumulator -= STEP) {
         game.step();
-        accumulator -= STEP;
       }
-      court.render(elapsed, accumulator / STEP);
-      if (time - lastHud > 80) {
+      const impacts = game.impacts.splice(0);
+      for (const impact of impacts) audio.impact(impact);
+      court.render(game, impacts, elapsed, accumulator / STEP);
+      if (time - lastHud > HUD_INTERVAL) {
         lastHud = time;
-        setHud({ phase: game.phase, rally: game.rally, best: game.best, message: game.message });
+        const next = readHud(game);
+        setHud((current) => (sameHud(current, next) ? current : next));
       }
       frame = requestAnimationFrame(draw);
     };
 
+    const updateDrive = () => {
+      game.drive = {
+        x: Number(keys.has("d")) - Number(keys.has("a")),
+        y: Number(keys.has("w")) - Number(keys.has("s")),
+      };
+    };
     const onPointerMove = (event: PointerEvent) => {
       // A mouse aims on hover; touch and pen aim only while their drag is active.
       const tracked = event.pointerId === activePointer;
       if (!tracked && (activePointer !== undefined || event.pointerType !== "mouse")) return;
-      court.aim(event.clientX, event.clientY, event.pointerType !== "mouse");
+      const hand = court.handAt(event.clientX, event.clientY, event.pointerType !== "mouse");
+      if (hand) {
+        game.target.x = hand.x;
+        game.target.y = hand.y;
+      }
+      // A quick upward flick swings; its speed sets the power.
       if (lastPointer) {
         const elapsed = event.timeStamp - lastPointer.time;
         const upwardSpeed = (lastPointer.y - event.clientY) / Math.max(8, elapsed);
@@ -116,29 +142,35 @@ export function PracticeGame() {
       if (!GAME_KEYS.has(key)) return;
       event.preventDefault();
       keys.add(key);
+      updateDrive();
       if (event.repeat) return;
       if (key === " ") game.swing();
-      if (key === "p") game.pause();
+      if (key === "p") game.togglePause();
       if (key === "enter" && game.phase === "ready") game.start();
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      keys.delete(normalizeKey(event.key));
+      updateDrive();
     };
     const onBlur = () => {
       keys.clear();
+      updateDrive();
       activePointer = undefined;
       lastPointer = undefined;
-      if (game.phase === "playing") game.pause();
+      if (game.phase === "playing") game.togglePause();
     };
 
     const listeners = new AbortController();
     const { signal } = listeners;
-    window.addEventListener("pointerdown", court.enableAudio, { signal });
-    window.addEventListener("keydown", court.enableAudio, { signal });
+    window.addEventListener("pointerdown", audio.enable, { signal });
+    window.addEventListener("keydown", audio.enable, { signal });
     element.addEventListener("pointerdown", onPointerDown, { signal });
     element.addEventListener("pointermove", onPointerMove, { signal });
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
       element.addEventListener(type, onPointerEnd, { signal });
     }
     window.addEventListener("keydown", onKeyDown, { signal });
-    window.addEventListener("keyup", (event) => keys.delete(normalizeKey(event.key)), { signal });
+    window.addEventListener("keyup", onKeyUp, { signal });
     window.addEventListener("blur", onBlur, { signal });
     document.addEventListener("visibilitychange", () => document.hidden && onBlur(), { signal });
     frame = requestAnimationFrame(draw);
@@ -146,18 +178,20 @@ export function PracticeGame() {
     return () => {
       listeners.abort();
       cancelAnimationFrame(frame);
+      audio.dispose();
       court.dispose();
-      courtRef.current = null;
+      view.current = null;
     };
   }, [game]);
 
   useEffect(() => {
-    courtRef.current?.setMuted(muted);
+    view.current?.audio.setMuted(muted);
   }, [muted]);
 
   useEffect(() => {
-    courtRef.current?.setScene(scene.id, scene.image);
-  }, [scene]);
+    view.current?.court.setCourt(courtId);
+    view.current?.audio.setCourt(courtId);
+  }, [courtId]);
 
   const focusCourt = () => host.current?.focus({ preventScroll: true });
   const start = () => {
@@ -165,13 +199,13 @@ export function PracticeGame() {
     focusCourt();
   };
   const togglePause = () => {
-    game.pause();
+    game.togglePause();
     setHelp(false);
     focusCourt();
   };
   const restart = () => {
-    setScene(randomCourt());
-    game.reset();
+    setCourtId(randomCourt());
+    game.restart();
     setHelp(false);
     focusCourt();
   };
@@ -180,39 +214,44 @@ export function PracticeGame() {
     focusCourt();
   };
   const toggleHelp = () => {
-    if (!help && game.phase === "playing") game.pause();
+    if (!help && game.phase === "playing") game.togglePause();
     setHelp(!help);
   };
+  const toggleMuted = () => {
+    setMuted(!muted);
+    focusCourt();
+  };
 
-  const card = error
-    ? {
-        eyebrow: "WebGL unavailable",
-        title: "Your court couldn’t load.",
-        body: "Try a browser with WebGL enabled, then reload this page.",
-      }
-    : help
-      ? {
-          eyebrow: "The basics",
-          title: "Controls",
-          body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim and curve. Flick up for power and topspin. Use the pause button for a break. Misses feed a new ball.",
-          note: "Desktop shortcuts: arrows / WASD to move · Space to swing · P to pause.",
-          action: { label: "Close", onClick: closeHelp },
-        }
-      : hud.phase === "paused"
-        ? {
-            eyebrow: scene.name,
-            title: "Paused",
-            body: "Resume to continue the rally.",
-            action: { label: "Resume", onClick: togglePause },
-          }
-        : hud.phase === "ready"
-          ? {
-              eyebrow: scene.name,
-              title: "Table tennis",
-              body: "Play against AI. Drag a finger to move your paddle; flick up to hit harder.",
-              action: { label: "Start playing", onClick: start },
-            }
-          : undefined;
+  let card: Card | undefined;
+  if (error) {
+    card = {
+      eyebrow: "WebGL unavailable",
+      title: "Your court couldn’t load.",
+      body: "Try a browser with WebGL enabled, then reload this page.",
+    };
+  } else if (help) {
+    card = {
+      eyebrow: "The basics",
+      title: "Controls",
+      body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim and curve. Flick up for power and topspin. Use the pause button for a break. Misses feed a new ball.",
+      note: "Desktop shortcuts: arrows / WASD to move · Space to swing · P to pause.",
+      action: { label: "Close", onClick: closeHelp },
+    };
+  } else if (hud.phase === "paused") {
+    card = {
+      eyebrow: court.name,
+      title: "Paused",
+      body: "Resume to continue the rally.",
+      action: { label: "Resume", onClick: togglePause },
+    };
+  } else if (hud.phase === "ready") {
+    card = {
+      eyebrow: court.name,
+      title: "Table tennis",
+      body: "Play against AI. Drag a finger to move your paddle; flick up to hit harder.",
+      action: { label: "Start playing", onClick: start },
+    };
+  }
 
   return (
     <main className="practice-app">
@@ -248,8 +287,8 @@ export function PracticeGame() {
       <section
         className="practice-stage"
         aria-label="Table tennis practice"
-        data-mood={scene.id}
-        style={{ backgroundImage: `url(${scene.image})` }}
+        data-court={courtId}
+        style={{ backgroundImage: `url(${court.image})` }}
       >
         <div
           ref={host}
@@ -302,7 +341,7 @@ export function PracticeGame() {
 
       <footer className="practice-footer">
         <h1 className="footer-note">
-          <span aria-hidden="true">✿</span> {scene.name} <span>· AI opponent</span>
+          <span aria-hidden="true">✿</span> {court.name} <span>· AI opponent</span>
         </h1>
         <div className="control-hints">
           <span>
@@ -315,10 +354,7 @@ export function PracticeGame() {
             How to play <CircleHelp size={15} />
           </button>
           <button
-            onClick={() => {
-              setMuted(!muted);
-              focusCourt();
-            }}
+            onClick={toggleMuted}
             aria-label="Mute sound"
             aria-pressed={muted}
             title={muted ? "Unmute sound" : "Mute sound"}

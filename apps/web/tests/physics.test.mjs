@@ -214,7 +214,7 @@ test("the default feed can be blocked across the net and returned by the partner
     ["table", "player", "table", "opponent"],
   );
   assert.ok(game.impacts[2].position.z < 0);
-  assert.equal(game.waiting, 0);
+  assert.equal(game.nextBallIn, 0);
 });
 
 test("full-power flicks of the feed land across the net, whatever the upward speed", () => {
@@ -252,17 +252,17 @@ test("full-power flicks of the feed land across the net, whatever the upward spe
   }
 });
 
-test("pause freezes play, reset preserves best, and a settled ball feeds a new one", () => {
+test("pause freezes play, restart preserves best, and a settled ball feeds a new one", () => {
   const game = approaching();
   game.step();
-  game.pause();
+  game.togglePause();
   const ball = { ...game.ball };
   game.step();
   assert.deepEqual(game.ball, ball);
-  game.pause();
+  game.togglePause();
   game.step();
   assert.notDeepEqual(game.ball, ball);
-  game.reset();
+  game.restart();
   assert.equal(game.rally, 0);
   assert.equal(game.best, 1);
   assert.deepEqual(game.previousBall, game.ball);
@@ -270,8 +270,8 @@ test("pause freezes play, reset preserves best, and a settled ball feeds a new o
   game.ball = { x: 0.2, y: BALL_RADIUS, z: 0.4 };
   game.velocity = { x: 0, y: 0, z: 0 };
   game.step();
-  assert.ok(game.waiting > 0);
+  assert.ok(game.nextBallIn > 0);
   for (let i = 0; i < 160; i++) game.step();
-  assert.equal(game.waiting, 0);
+  assert.equal(game.nextBallIn, 0);
   assert.ok(game.velocity.z > 0);
 });

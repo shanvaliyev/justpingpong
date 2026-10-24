@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
-import type { Vec3 } from "./physics";
+import { clamp, type Vec3 } from "./physics";
+import { canvasTexture, seededRandom } from "./textures";
 
 // Real shakehand racket proportions in metres (ITTF-sized blade, flared handle), drawn a little
 // larger than life so it still reads at game distance. The physics contact circle stays separate.
@@ -10,7 +11,6 @@ const HANDLE = { archY: -0.064, archRadius: 0.017, thickness: 0.024, bevel: 0.00
 // The racket hand: handles point back toward it, so the blade fans out around the body.
 const HAND = { x: 0.22, y: -0.1 };
 const SUBSTEP = 1 / 240;
-const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(high, n));
 
 class Spring {
   value = 0;
@@ -27,29 +27,9 @@ class Spring {
 const spring = (frequency: number, dampingRatio: number) =>
   new Spring(frequency * frequency, 2 * dampingRatio * frequency);
 
-function canvasTexture(
-  width: number,
-  height: number,
-  draw: (ctx: CanvasRenderingContext2D) => void,
-) {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  draw(canvas.getContext("2d")!);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  return texture;
-}
-
-// Deterministic noise so both rackets and every reload look the same.
-function random(seed: number) {
-  return () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-}
-
 function rubberTexture(color: string, speckle: string) {
   const texture = canvasTexture(512, 512, (ctx) => {
-    const rand = random(color.length * 7919);
+    const rand = seededRandom(color.length * 7919);
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, 512, 512);
     ctx.fillStyle = speckle;
@@ -70,7 +50,7 @@ function rubberTexture(color: string, speckle: string) {
 
 function handleTexture() {
   const texture = canvasTexture(128, 512, (ctx) => {
-    const rand = random(42);
+    const rand = seededRandom(42);
     const base = ctx.createLinearGradient(0, 0, 128, 0);
     base.addColorStop(0, "#a8723f");
     base.addColorStop(0.5, "#c08a52");
@@ -147,12 +127,6 @@ function handleGeometry() {
  */
 export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" }) {
   const { side } = options;
-  const textures = [
-    rubberTexture("#b0141c", "rgba(0, 0, 0, 0.12)"),
-    rubberTexture("#141518", "rgba(255, 255, 255, 0.05)"),
-    handleTexture(),
-  ];
-  const [redMap, blackMap, woodMap] = textures;
   const rubber = (map: THREE.Texture) =>
     new THREE.MeshPhysicalMaterial({
       map,
@@ -200,8 +174,8 @@ export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" 
   });
   sheet.translate(0, 0, 0.0004);
   for (const [map, direction] of [
-    [redMap, 1],
-    [blackMap, -1],
+    [rubberTexture("#b0141c", "rgba(0, 0, 0, 0.12)"), 1],
+    [rubberTexture("#141518", "rgba(255, 255, 255, 0.05)"), -1],
   ] as const) {
     const mesh = shadowed(new THREE.Mesh(sheet, rubber(map)));
     // Turning the back sheet around keeps its print readable from that side.
@@ -214,7 +188,7 @@ export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" 
       new THREE.Mesh(
         handleGeometry(),
         new THREE.MeshPhysicalMaterial({
-          map: woodMap,
+          map: handleTexture(),
           roughness: 0.42,
           clearcoat: 0.6,
           clearcoatRoughness: 0.3,
@@ -298,9 +272,6 @@ export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" 
     hit(strength: number) {
       pitch.velocity += 7 * strength;
       kick.velocity += 0.5 * strength;
-    },
-    dispose() {
-      for (const texture of textures) texture.dispose();
     },
   };
 }

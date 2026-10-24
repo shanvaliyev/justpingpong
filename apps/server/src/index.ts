@@ -18,7 +18,7 @@ initLogger({
   env: { service: "justpingpong-server" },
 });
 
-const identifyUser = createAuthMiddleware((await createAuth()) as BetterAuthInstance, {
+const identifyUser = createAuthMiddleware(createAuth() as BetterAuthInstance, {
   exclude: ["/api/auth/**"],
   maskEmail: true,
 });
@@ -41,28 +41,14 @@ app.use(
   }),
 );
 
-app.on(["POST", "GET"], "/api/auth/*", async (c) => (await createAuth()).handler(c.req.raw));
+app.on(["POST", "GET"], "/api/auth/*", (c) => createAuth().handler(c.req.raw));
 
-export const apiHandler = new OpenAPIHandler(appRouter, {
-  plugins: [
-    new OpenAPIReferencePlugin({
-      schemaConverters: [new ZodToJsonSchemaConverter()],
-    }),
-  ],
-  interceptors: [
-    onError((error) => {
-      console.error(error);
-    }),
-  ],
+const logError = (error: unknown) => console.error(error);
+const apiHandler = new OpenAPIHandler(appRouter, {
+  plugins: [new OpenAPIReferencePlugin({ schemaConverters: [new ZodToJsonSchemaConverter()] })],
+  interceptors: [onError(logError)],
 });
-
-export const rpcHandler = new RPCHandler(appRouter, {
-  interceptors: [
-    onError((error) => {
-      console.error(error);
-    }),
-  ],
-});
+const rpcHandler = new RPCHandler(appRouter, { interceptors: [onError(logError)] });
 
 app.use("/*", async (c, next) => {
   const context = await createContext({ context: c });

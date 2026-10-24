@@ -9,17 +9,13 @@ export type AuthConfig = {
   CORS_ORIGIN: string;
 };
 
-export function createAuth(
-  env: AuthConfig,
-  database: Database,
-  desktopOrigins: readonly string[] = [],
-) {
+export function createAuth(env: AuthConfig, database: Database) {
   return betterAuth({
     database: drizzleAdapter(database, {
       provider: "sqlite",
       schema,
     }),
-    trustedOrigins: [env.CORS_ORIGIN, ...desktopOrigins],
+    trustedOrigins: [env.CORS_ORIGIN],
     emailAndPassword: { enabled: true },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
