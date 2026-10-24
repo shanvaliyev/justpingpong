@@ -69,6 +69,26 @@ export class PracticePhysics {
     this.velocity = { x: 0, y: 0, z: 0 };
   }
 
+  /**
+   * Hold a ready height until the ball heads back, then move once to where it will
+   * cross the opponent's plane, instead of mirroring every arc and bounce.
+   */
+  private opponentHeight() {
+    if (this.velocity.z >= 0) return 0.36;
+    let { y, z } = this.ball;
+    let vy = this.velocity.y;
+    for (let i = 0; i < 240 && z > this.opponent.z; i++) {
+      z += this.velocity.z * STEP;
+      y += vy * STEP - 0.5 * GRAVITY * STEP * STEP;
+      vy -= GRAVITY * STEP;
+      if (y < BALL_RADIUS && vy < 0 && Math.abs(z) <= TABLE.halfLength) {
+        y = BALL_RADIUS + (BALL_RADIUS - y) * 0.88;
+        vy *= -0.88;
+      }
+    }
+    return clamp(y, 0.15, 1.05);
+  }
+
   step(dt = STEP) {
     if (this.phase !== "playing") return;
     const oldPlayer = { ...this.player };
@@ -82,6 +102,7 @@ export class PracticePhysics {
 
     // A speed-limited practice partner, not a paddle that teleports to the ball.
     this.opponent.x = approach(this.opponent.x, clamp(this.ball.x, -0.86, 0.86), 1.5);
+    this.opponent.y = approach(this.opponent.y, this.opponentHeight(), 2);
     if (this.waiting > 0) {
       this.waiting -= dt;
       if (this.waiting <= 0) {
