@@ -51,7 +51,8 @@ export function PracticeGame() {
     let lastHud = 0;
 
     const draw = (time: number) => {
-      accumulator += Math.min((time - previousTime) / 1000, 0.05);
+      const elapsed = Math.min((time - previousTime) / 1000, 0.05);
+      accumulator += elapsed;
       previousTime = time;
       while (accumulator >= STEP) {
         if (game.phase === "playing") {
@@ -63,7 +64,7 @@ export function PracticeGame() {
         game.step();
         accumulator -= STEP;
       }
-      court.render();
+      court.render(elapsed);
       if (time - lastHud > 80) {
         lastHud = time;
         setHud({ phase: game.phase, rally: game.rally, best: game.best, message: game.message });

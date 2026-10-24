@@ -1,6 +1,9 @@
 import * as THREE from "three";
 
-import { BALL_RADIUS, PADDLE_RADIUS, TABLE, type PracticePhysics } from "./physics";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+import { BALL_RADIUS, TABLE, type PracticePhysics } from "./physics";
+import { createRacket } from "./racket";
 
 export function createCourt(host: HTMLElement, game: PracticePhysics) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -24,7 +27,6 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
   const green = new THREE.MeshStandardMaterial({ color: 0x248e9a, roughness: 0.87 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x285866, roughness: 0.75 });
   const white = new THREE.MeshStandardMaterial({ color: 0xfff9e8 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0xc79c65 });
   const box = (
     w: number,
     h: number,
@@ -73,32 +75,13 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
   );
   box(1.62, 0.012, 0.012, 0, TABLE.netHeight, 0, white);
 
-  function paddle(color: number) {
-    const group = new THREE.Group();
-    const rim = new THREE.Mesh(
-      new THREE.CylinderGeometry(PADDLE_RADIUS, PADDLE_RADIUS, 0.026, 48),
-      wood,
-    );
-    rim.rotation.x = Math.PI / 2;
-    group.add(rim);
-    const face = new THREE.Mesh(
-      new THREE.CylinderGeometry(PADDLE_RADIUS - 0.008, PADDLE_RADIUS - 0.008, 0.029, 48),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.95 }),
-    );
-    face.rotation.x = Math.PI / 2;
-    face.castShadow = true;
-    group.add(face);
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.19, 0.035), wood);
-    handle.position.y = -0.24;
-    group.add(handle);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.15, 0.039), dark);
-    grip.position.y = -0.25;
-    group.add(grip);
-    scene.add(group);
-    return group;
-  }
-  const player = paddle(0xe94942);
-  const opponent = paddle(0xe05a50);
+  // A soft studio reflection for the rackets only, so lacquer and rubber catch the light.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  const player = createRacket({ side: 1, forehand: "black", envMap });
+  const opponent = createRacket({ side: -1, forehand: "red", envMap });
+  scene.add(player.object, opponent.object);
   const ball = new THREE.Mesh(
     new THREE.SphereGeometry(BALL_RADIUS, 24, 16),
     new THREE.MeshStandardMaterial({
@@ -138,6 +121,7 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
   const raycaster = new THREE.Raycaster();
   const paddlePlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -1.53);
   const point = new THREE.Vector3();
+  let previousVz = 0;
 
   return {
     aim(clientX: number, clientY: number, touch: boolean) {
@@ -154,16 +138,14 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
         game.target.y = point.y;
       }
     },
-    render() {
-      // A gentle forehand/backhand pose; the centre position stays face-on.
-      // Keep the forgiving circular contact area instead of adding spin mechanics.
-      for (const [mesh, position] of [
-        [player, game.player],
-        [opponent, game.opponent],
-      ] as const) {
-        mesh.position.copy(position);
-        mesh.rotation.set(0, -position.x * 0.28, -position.x * 0.38);
-      }
+    render(dt: number) {
+      // A reversed ball near a racket means that racket just struck it (net bounces are mid-table).
+      const vz = game.velocity.z;
+      if (previousVz > 0 && vz < 0 && game.ball.z > 1) player.hit(Math.min(1, -vz / 4));
+      if (previousVz < 0 && vz > 0 && game.ball.z < -1) opponent.hit(Math.min(1, vz / 4));
+      previousVz = vz;
+      player.update(game.player, dt);
+      opponent.update(game.opponent, dt);
       ball.position.copy(game.ball);
       ball.visible = game.waiting <= 0;
       shadow.visible =
@@ -176,6 +158,9 @@ export function createCourt(host: HTMLElement, game: PracticePhysics) {
     },
     dispose() {
       observer.disconnect();
+      player.dispose();
+      opponent.dispose();
+      envMap.dispose();
       // Shared geometries and materials are safe to dispose more than once.
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) {

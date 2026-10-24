@@ -3,7 +3,8 @@
 export const STEP = 1 / 120;
 export const GRAVITY = 5.8;
 export const BALL_RADIUS = 0.026;
-export const PADDLE_RADIUS = 0.19;
+// Contact circle around the blade centre: a little more forgiving than the drawn blade.
+export const PADDLE_RADIUS = 0.15;
 export const TABLE = { halfWidth: 0.7625, halfLength: 1.37, netHeight: 0.1525 };
 export type Vec3 = { x: number; y: number; z: number };
 type Phase = "ready" | "playing" | "paused";
