@@ -9,6 +9,7 @@ const SPARKS = 96;
 /** Impact feedback: an expanding ring, a quick flash, and a burst of sparks on racket hits. */
 export function createImpactEffects() {
   const object = new THREE.Group();
+  const flashMap = radialTexture("rgba(255,246,220,1)", "rgba(255,200,120,0)");
   const pulses = Array.from({ length: PULSES }, () => {
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.035, 0.045, 40),
@@ -17,11 +18,13 @@ export function createImpactEffects() {
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
+        // Flat, so one pass draws both faces exactly as a back-then-front pass would.
+        forceSinglePass: true,
       }),
     );
     const flash = new THREE.Sprite(
       new THREE.SpriteMaterial({
-        map: radialTexture("rgba(255,246,220,1)", "rgba(255,200,120,0)"),
+        map: flashMap,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         transparent: true,
@@ -55,6 +58,8 @@ export function createImpactEffects() {
   sparks.frustumCulled = false;
   object.add(sparks);
   let nextSpark = 0;
+  // Spark positions upload only while some fly, plus once more to park the last ones out of sight.
+  let sparksFlying = true;
 
   const burst = (at: THREE.Vector3, direction: number, strength: number) => {
     for (let n = Math.round(4 + strength * 12); n > 0; n--) {
@@ -107,18 +112,21 @@ export function createImpactEffects() {
         pulse.flash.material.opacity =
           (1 - flash) * (pulse.racket ? 0.9 : 0.4) * (0.4 + pulse.strength);
       }
+      let flying = false;
       for (let i = 0; i < SPARKS; i++) {
         if (sparkLife[i] <= 0) {
           sparkPositions[i * 3 + 1] = -100;
           continue;
         }
+        flying = true;
         sparkLife[i] -= dt;
         sparkVelocity[i * 3 + 1] -= 6 * dt;
         for (let axis = 0; axis < 3; axis++) {
           sparkPositions[i * 3 + axis] += sparkVelocity[i * 3 + axis] * dt;
         }
       }
-      sparkGeometry.attributes.position.needsUpdate = true;
+      if (flying || sparksFlying) sparkGeometry.attributes.position.needsUpdate = true;
+      sparksFlying = flying;
     },
   };
 }

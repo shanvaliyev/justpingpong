@@ -95,9 +95,26 @@ export function createPost(
       uniforms.saturation.value = look.saturation;
       uniforms.contrast.value = look.contrast;
     },
-    /** The last step down for slow devices: multisampling is the costliest part of the pass. */
+    /**
+     * Compile `object`'s shaders for the HDR buffer every frame is drawn into. Shaders compiled for
+     * the canvas would be a different, unused variant, and the real ones would then compile while
+     * drawing.
+     */
+    compile(object: THREE.Object3D, target?: THREE.Scene) {
+      const current = renderer.getRenderTarget();
+      renderer.setRenderTarget(composer.inputBuffer);
+      const compiled = renderer.compileAsync(object, camera, target);
+      renderer.setRenderTarget(current);
+      return compiled;
+    },
+    /**
+     * The first step down for slow devices: multisampling is the costliest part of the pass, and
+     * at a high pixel ratio it adds the least sharpness. False once it is already off.
+     */
     stopAntialiasing() {
+      if (composer.multisampling === 0) return false;
       composer.multisampling = 0;
+      return true;
     },
     setSize(width: number, height: number) {
       composer.setSize(width, height);

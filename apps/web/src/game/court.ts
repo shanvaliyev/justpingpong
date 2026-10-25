@@ -2,12 +2,13 @@ import * as THREE from "three";
 
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 import { createBall } from "./ball";
 import { createImpactEffects } from "./impacts";
 import { PLAYER_HOME, TABLE, type Impact, type PracticePhysics } from "./physics";
 import { createPost, type Grade } from "./post";
-import { createRacket } from "./racket";
+import { createRacket, createRacketModel } from "./racket";
 import { FLOOR_Y, loadScenery, type Scenery, type SceneryConfig } from "./scenery";
 import { canvasTexture, grainNormalTexture, radialTexture, seededRandom } from "./textures";
 
@@ -138,12 +139,17 @@ const TOUCH_GAIN = 1.5;
 const PORTRAIT_HALF_VIEW = 0.82;
 const PORTRAIT_FOCUS = new THREE.Vector3(0, 0.65, PLAYER_HOME.z);
 const PORTRAIT_SIGHT = new THREE.Vector3(0, 1.35, 4.6).normalize();
-// Adaptive quality: when most of a sampling window of play runs below ~50 fps, render fewer
-// pixels, and at the lowest resolution stop antialiasing. It only steps down, so a sharp image
-// never flickers between qualities.
+// Adaptive quality: when most of a sampling window of play runs below ~50 fps, stop antialiasing
+// first, then render fewer pixels. It only steps down, so a sharp image never flickers between
+// qualities.
 const SLOW_FRAME = 1 / 50;
 const SAMPLE_TIME = 2;
 const MIN_PIXEL_RATIO = 1;
+/**
+ * The title screen only drifts, so it draws about 30 times a second rather than every display
+ * frame. The margin absorbs frame-time jitter, so 60 Hz screens draw every other frame.
+ */
+const TITLE_FRAME = 1 / 30 - 0.004;
 /** A player hit at least this strong (0–1) gets a moment of slow motion. */
 const SLOW_MOTION_HIT = 0.85;
 const SLOW_MOTION_TIME = 0.3;
@@ -154,15 +160,15 @@ function tableTexture() {
   const height = Math.round((width * TABLE.halfLength) / TABLE.halfWidth);
   const scale = width / (TABLE.halfWidth * 2);
   return canvasTexture(width, height, (ctx) => {
-    ctx.fillStyle = "#174f8c";
-    ctx.fillRect(0, 0, width, height);
-    const image = ctx.getImageData(0, 0, width, height);
+    // Grain over #174f8c, written directly: reading pixels back from a canvas is slow.
+    const image = ctx.createImageData(width, height);
     const rand = seededRandom(1234567);
     for (let i = 0; i < image.data.length; i += 4) {
       const grain = (rand() - 0.5) * 9;
-      image.data[i] += grain;
-      image.data[i + 1] += grain;
-      image.data[i + 2] += grain;
+      image.data[i] = 0x17 + grain;
+      image.data[i + 1] = 0x4f + grain;
+      image.data[i + 2] = 0x8c + grain;
+      image.data[i + 3] = 255;
     }
     ctx.putImageData(image, 0, 0);
     // Wide, faint sheen so the surface is not a flat colour under even light.
@@ -240,7 +246,11 @@ function netTexture() {
   return texture;
 }
 
-/** Table and net, with soft contact shade where they meet the floor. Every part casts shadows. */
+/**
+ * Table and net, with soft contact shade where they meet the floor. Every solid part casts
+ * shadows. Parts sharing a material are merged into one mesh, so the table costs a few draw calls
+ * in each pass rather than one per leg, brace, and clamp.
+ */
 function createTable() {
   const object = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({
@@ -255,13 +265,27 @@ function createTable() {
     object.add(mesh);
     return mesh;
   };
-  const box = (
-    size: [number, number, number],
-    position: [number, number, number],
-    material: THREE.Material | THREE.Material[],
-  ) => {
-    add(new THREE.BoxGeometry(...size), material).position.set(...position);
+  /** Parts merged into one geometry around their centre, so a mesh there sorts by its real depth. */
+  const merged = (parts: THREE.BufferGeometry[]) => {
+    const geometry = mergeGeometries(parts)!;
+    for (const part of parts) part.dispose();
+    geometry.computeBoundingBox();
+    const centre = geometry.boundingBox!.getCenter(new THREE.Vector3());
+    geometry.translate(-centre.x, -centre.y, -centre.z);
+    return { geometry, centre };
   };
+  const solid = (parts: THREE.BufferGeometry[], material: THREE.Material) => {
+    const { geometry, centre } = merged(parts);
+    add(geometry, material).position.copy(centre);
+  };
+  const frame: THREE.BufferGeometry[] = [];
+  const steelPart = (
+    geometry: THREE.BufferGeometry,
+    position: [number, number, number],
+    tilt = 0,
+  ) => frame.push(geometry.rotateX(tilt).translate(...position));
+  const steelBox = (size: [number, number, number], position: [number, number, number]) =>
+    steelPart(new THREE.BoxGeometry(...size), position);
 
   // A lacquered top with painted lines over a rounded, dark edge band and a steel undercarriage.
   // Fine orange peel and uneven gloss make its reflections break up like a real table's.
@@ -287,68 +311,73 @@ function createTable() {
   );
   surface.rotation.x = -Math.PI / 2;
   surface.position.y = 0.0002;
-  box([TABLE.halfWidth * 2 - 0.08, 0.05, TABLE.halfLength * 2 - 0.1], [0, -0.05, 0], steel);
+  // Opaque meshes draw in material order, which puts the steel frame first. Drawing the top
+  // before everything lets the depth test skip the frame beneath it, instead of lighting the
+  // frame and then painting over it.
+  surface.renderOrder = -0.5;
+  steelBox([TABLE.halfWidth * 2 - 0.08, 0.05, TABLE.halfLength * 2 - 0.1], [0, -0.05, 0]);
   const feet: [number, number][] = [];
+  const footParts: THREE.BufferGeometry[] = [];
   for (const z of [-1, 1]) {
     for (const x of [-0.64, 0.64]) {
-      add(new THREE.CylinderGeometry(0.022, 0.022, 0.68, 16), steel).position.set(
-        x,
-        -0.42,
-        z * 1.02,
-      );
-      add(new THREE.CylinderGeometry(0.036, 0.04, 0.03, 20), rubberFoot).position.set(
-        x,
-        -0.745,
-        z * 1.02,
+      steelPart(new THREE.CylinderGeometry(0.022, 0.022, 0.68, 16), [x, -0.42, z * 1.02]);
+      footParts.push(
+        new THREE.CylinderGeometry(0.036, 0.04, 0.03, 20).translate(x, -0.745, z * 1.02),
       );
       feet.push([x, z * 1.02]);
     }
-    box([1.28, 0.03, 0.03], [0, -0.62, z * 1.02], steel);
+    steelBox([1.28, 0.03, 0.03], [0, -0.62, z * 1.02]);
     // Folding braces from each leg frame up towards the table's centre.
-    const brace = add(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 10), steel);
-    brace.position.set(0, -0.36, z * 0.62);
-    brace.rotation.x = z * 1.05;
+    steelPart(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 10), [0, -0.36, z * 0.62], z * 1.05);
   }
 
   // Net: posts with clamps, a see-through mesh, and a white top tape.
   for (const x of [-1, 1]) {
-    box([0.022, 0.165, 0.03], [x * 0.81, 0.07, 0], steel);
-    box([0.06, 0.04, 0.06], [x * 0.79, -0.035, 0], steel);
+    steelBox([0.022, 0.165, 0.03], [x * 0.81, 0.07, 0]);
+    steelBox([0.06, 0.04, 0.06], [x * 0.79, -0.035, 0]);
   }
+  solid(frame, steel);
+  solid(footParts, rubberFoot);
   const net = new THREE.Mesh(
     new THREE.PlaneGeometry(1.6, TABLE.netHeight - 0.012),
     new THREE.MeshStandardMaterial({
       map: netTexture(),
       transparent: true,
       side: THREE.DoubleSide,
+      // Flat, so one pass draws both faces exactly as a back-then-front pass would.
+      forceSinglePass: true,
       depthWrite: false,
       roughness: 0.9,
     }),
   );
   net.position.y = (TABLE.netHeight - 0.012) / 2;
   object.add(net);
-  box(
-    [1.62, 0.016, 0.006],
-    [0, TABLE.netHeight - 0.008, 0],
+  add(
+    new THREE.BoxGeometry(1.62, 0.016, 0.006),
     new THREE.MeshStandardMaterial({ color: 0xfbfaf4, roughness: 0.6 }),
-  );
+  ).position.set(0, TABLE.netHeight - 0.008, 0);
 
   // Contact shade: the sky is hidden under the table and right around each foot.
-  const shade = (width: number, depth: number, x: number, z: number, darkness: number) => {
+  const shade = (planes: THREE.BufferGeometry[], darkness: number) => {
+    const { geometry, centre } = merged(planes);
     const mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(width, depth),
+      geometry,
       new THREE.MeshBasicMaterial({
         map: radialTexture(`rgba(6,8,16,${darkness})`, "rgba(6,8,16,0)"),
         transparent: true,
         depthWrite: false,
       }),
     );
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(x, FLOOR_Y + 0.002, z);
+    mesh.position.copy(centre);
     object.add(mesh);
   };
-  shade(2.6, 3.8, 0, 0, 0.5);
-  for (const [x, z] of feet) shade(0.2, 0.2, x, z, 0.75);
+  const plane = (width: number, depth: number, x: number, z: number) =>
+    new THREE.PlaneGeometry(width, depth).rotateX(-Math.PI / 2).translate(x, FLOOR_Y + 0.002, z);
+  shade([plane(2.6, 3.8, 0, 0)], 0.5);
+  shade(
+    feet.map(([x, z]) => plane(0.2, 0.2, x, z)),
+    0.75,
+  );
   return object;
 }
 
@@ -427,8 +456,9 @@ export function createCourt(host: HTMLElement) {
   let studio: THREE.Texture | undefined;
 
   const table = createTable();
-  const player = createRacket({ side: 1, forehand: "black" });
-  const opponent = createRacket({ side: -1, forehand: "red" });
+  const racket = createRacketModel();
+  const player = createRacket(racket, { side: 1, forehand: "black" });
+  const opponent = createRacket(racket, { side: -1, forehand: "red" });
   const ball = createBall();
   const effects = createImpactEffects();
   scene.add(
@@ -453,8 +483,9 @@ export function createCourt(host: HTMLElement) {
   const follow = { yaw: 0, pitch: 0 };
   const position = new THREE.Vector3();
   // Paused, nothing moves, so a frame is drawn only when the view or the phase changes. The title
-  // screen keeps its petals, dust, and camera drift alive.
+  // screen keeps its petals, dust, and camera drift alive at TITLE_FRAME.
   let dirty = true;
+  let titleWait = 0;
   let lastPhase: PracticePhysics["phase"] | undefined;
   let sampled = 0;
   let slow = 0;
@@ -515,7 +546,7 @@ export function createCourt(host: HTMLElement) {
         // The first court compiles with everything else below; reflections are part of every
         // lit shader, so the first ones must exist before it does.
         scene.environment ??= built.environment;
-        if (compiled) await renderer.compileAsync(built.object, camera, scene);
+        if (compiled) await post.compile(built.object, scene);
         return built;
       });
       sceneries.set(id, loading);
@@ -579,7 +610,7 @@ export function createCourt(host: HTMLElement) {
     if (compiled) return;
     compiled = true;
     // With KHR_parallel_shader_compile this keeps the main thread free.
-    void renderer.compileAsync(scene, camera).then(() => {
+    void post.compile(scene).then(() => {
       if (disposed) return;
       warmUp();
       renderer.domElement.style.opacity = "1";
@@ -631,17 +662,22 @@ export function createCourt(host: HTMLElement) {
       const playing = game.phase === "playing";
       const alive = game.phase !== "paused";
       if (!alive && !dirty && game.phase === lastPhase) return;
+      if (game.phase === "ready" && lastPhase === "ready" && !dirty) {
+        // Between title frames, keep the time so the next one moves as far as it would have.
+        titleWait += elapsed;
+        if (titleWait < TITLE_FRAME) return;
+        elapsed = titleWait;
+      }
+      titleWait = 0;
       dirty = false;
       lastPhase = game.phase;
       if (playing) {
         sampled += elapsed;
         if (elapsed > SLOW_FRAME) slow += elapsed;
         if (sampled >= SAMPLE_TIME) {
-          if (slow > sampled / 2 && pixelRatio > MIN_PIXEL_RATIO) {
+          if (slow > sampled / 2 && !post.stopAntialiasing() && pixelRatio > MIN_PIXEL_RATIO) {
             pixelRatio = Math.max(MIN_PIXEL_RATIO, pixelRatio - 0.5);
             resize();
-          } else if (slow > sampled / 2) {
-            post.stopAntialiasing();
           }
           sampled = slow = 0;
         }

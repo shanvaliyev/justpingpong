@@ -467,6 +467,12 @@ export async function loadScenery(
       ? createPetals(config.particles.count, config.particles.color)
       : createMotes(config.particles.count, config.particles.color);
   object.add(sky, backdrop, floor, createEdge(config.edge, maps, config), particles.object);
+  // Upload the photos now, once their sampling is final, rather than in the first frame that
+  // shows this court. The wall's copies of the floor maps reuse these uploads.
+  const { map: floorMap, normalMap: floorNormal, roughnessMap: floorRough } = floor.material;
+  for (const texture of [backdropMap, floorMap!, floorNormal!, floorRough!]) {
+    renderer.initTexture(texture);
+  }
 
   // Reflections and ambient light come from the same sky and photo, over the ground's colour.
   const reflected = new THREE.Scene();

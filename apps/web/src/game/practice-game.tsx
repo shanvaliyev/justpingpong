@@ -1,5 +1,5 @@
-import "@fontsource/dotgothic16/400.css";
-import "@fontsource/press-start-2p/400.css";
+// Only the subsets the game's text uses: the scores and labels are plain Latin.
+import "@fontsource/press-start-2p/latin-400.css";
 import { useEffect, useRef, useState } from "react";
 
 import { createCourtAudio, type CourtAudio } from "./audio";
@@ -7,6 +7,7 @@ import { COURT_IDS, COURTS, createCourt, type Court, type CourtId } from "./cour
 import { PracticePhysics, STEP, type Phase } from "./physics";
 import { PixelIcon } from "./pixel-icon";
 import { courtImages } from "./scenery";
+import "./fonts.css";
 import "./practice.css";
 
 const randomCourt = (): CourtId => COURT_IDS[Math.floor(Math.random() * COURT_IDS.length)];

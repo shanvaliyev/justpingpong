@@ -121,12 +121,11 @@ function handleGeometry() {
 }
 
 /**
- * A shakehand racket with a sprung wrist pose. Its origin is the blade centre, which matches the
- * physics contact point; every rotation pivots there so the visible blade stays on the hitbox.
- * Red rubber is on the model's +z face, black on -z.
+ * The racket's blade, rubbers, and handle, centred on the blade. Red rubber is on the model's +z
+ * face, black on -z. Build it once: each racket draws a clone sharing its geometry, materials, and
+ * textures.
  */
-export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" }) {
-  const { side } = options;
+export function createRacketModel() {
   // Tacky rubber: fine pores break up its gloss, and sheen lights its rim at grazing angles.
   const pores = grainNormalTexture(64, 8, 31);
   pores.repeat.set(1 / 0.03, 1 / 0.03);
@@ -205,13 +204,25 @@ export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" 
       ),
     ),
   );
+  return model;
+}
 
+/**
+ * A shakehand racket with a sprung wrist pose, drawing a clone of `model`. Its origin is the blade
+ * centre, which matches the physics contact point; every rotation pivots there so the visible
+ * blade stays on the hitbox.
+ */
+export function createRacket(
+  model: THREE.Object3D,
+  options: { side: 1 | -1; forehand: "red" | "black" },
+) {
+  const { side } = options;
   // root: contact point, turned to face across the table. pose: the animated wrist.
   const root = new THREE.Group();
   root.rotation.y = side === 1 ? 0 : Math.PI;
   const pose = new THREE.Group();
   pose.rotation.order = "ZXY";
-  pose.add(model);
+  pose.add(model.clone());
   root.add(pose);
 
   const roll = spring(20, 0.6);

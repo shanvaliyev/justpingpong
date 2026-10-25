@@ -51,6 +51,8 @@ function createTrail() {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
+      // Additive light does not depend on draw order, so one pass draws both faces.
+      forceSinglePass: true,
     }),
   );
   mesh.frustumCulled = false;
