@@ -393,9 +393,6 @@ export function PracticeGame() {
           <span>
             <PixelIcon name="flick" /> Flick up
           </span>
-          <button onClick={toggleHelp}>
-            How to play <PixelIcon name="help" />
-          </button>
           <button
             onClick={toggleMuted}
             aria-label="Mute sound"
