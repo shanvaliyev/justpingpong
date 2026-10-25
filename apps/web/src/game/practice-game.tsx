@@ -384,7 +384,7 @@ export function PracticeGame() {
 
       <footer className="practice-footer">
         <h1 className="footer-note">
-          <PixelIcon name="sakura" /> {court.name} <span>1P vs CPU</span>
+          {court.name} <span>1P vs CPU</span>
         </h1>
         <div className="control-hints">
           <span>

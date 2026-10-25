@@ -373,10 +373,6 @@
   font-weight: 400;
   line-height: 1;
   text-transform: uppercase;
-  --dot: 2px;
-}
-.footer-note .pixel-icon {
-  color: var(--pink);
 }
 .footer-note > span {
   color: var(--cyan);
