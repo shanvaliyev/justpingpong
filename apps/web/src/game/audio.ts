@@ -1,4 +1,4 @@
-import type { CourtId } from "./court";
+import type { CourtId } from "./courts";
 import { clamp, type Impact } from "./physics";
 
 const VOLUME = 0.7;

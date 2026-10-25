@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
+import { COURTS, type CourtId } from "./courts";
 import { canvasTexture, radialTexture, seededRandom } from "./textures";
 
 /** The ground under the table; the table top is y = 0. */
@@ -32,7 +33,7 @@ export type SceneryConfig = {
 };
 
 /** Every image a court needs; index.html preloads the first court's. */
-export const courtImages = (id: string) => ({
+export const courtImages = (id: CourtId) => ({
   backdrop: `/game/courts/${id}-backdrop.webp`,
   floor: `/game/courts/${id}-floor.webp`,
   normal: `/game/courts/${id}-floor-normal.webp`,
@@ -184,7 +185,7 @@ function createBackdrop(map: THREE.Texture, config: SceneryConfig["backdrop"]) {
 }
 
 /** A railing or wall along the far end of the floor. Everything casts and takes shadows. */
-function createEdge(edge: SceneryConfig["edge"], maps: FloorMaps, config: SceneryConfig) {
+function createEdge(maps: FloorMaps, { edge, floor }: SceneryConfig) {
   const group = new THREE.Group();
   const z = -edge.distance;
   const add = (
@@ -221,27 +222,23 @@ function createEdge(edge: SceneryConfig["edge"], maps: FloorMaps, config: Scener
     ]);
     mesh.rotation.z = Math.PI / 2;
   };
-  const tile = config.floor.tile;
+  /** The floor's textures on a strip as long as the floor and `height` tall, tinted by `shade`. */
+  const surface = (height: number, shade = 1) =>
+    surfaceMaterial(
+      repeated(maps, FLOOR_WIDTH / floor.tile, height / floor.tile),
+      new THREE.Color(floor.tint).multiplyScalar(shade).getHex(),
+      floor.bumps,
+    );
 
   if (edge.kind === "wall") {
     // A low dressed-stone wall with a darker capstone.
     const height = 0.6;
-    const stone = surfaceMaterial(
-      repeated(maps, FLOOR_WIDTH / tile, height / tile),
-      config.floor.tint,
-      config.floor.bumps,
-    );
-    add(new RoundedBoxGeometry(FLOOR_WIDTH, height, 0.4, 2, 0.03), stone, [
+    add(new RoundedBoxGeometry(FLOOR_WIDTH, height, 0.4, 2, 0.03), surface(height), [
       0,
       FLOOR_Y + height / 2,
       z - 0.2,
     ]);
-    const cap = surfaceMaterial(
-      repeated(maps, FLOOR_WIDTH / tile, 0.5 / tile),
-      new THREE.Color(config.floor.tint).multiplyScalar(0.72).getHex(),
-      config.floor.bumps,
-    );
-    add(new RoundedBoxGeometry(FLOOR_WIDTH, 0.08, 0.5, 2, 0.02), cap, [
+    add(new RoundedBoxGeometry(FLOOR_WIDTH, 0.08, 0.5, 2, 0.02), surface(0.5, 0.72), [
       0,
       FLOOR_Y + height + 0.04,
       z - 0.2,
@@ -260,12 +257,7 @@ function createEdge(edge: SceneryConfig["edge"], maps: FloorMaps, config: Scener
   } else {
     // A concrete parapet with a glass balustrade, a steel handrail, and a warm LED strip.
     const height = 0.5;
-    const concrete = surfaceMaterial(
-      repeated(maps, FLOOR_WIDTH / tile, height / tile),
-      new THREE.Color(config.floor.tint).multiplyScalar(1.1).getHex(),
-      config.floor.bumps,
-    );
-    add(new RoundedBoxGeometry(FLOOR_WIDTH, height, 0.3, 2, 0.02), concrete, [
+    add(new RoundedBoxGeometry(FLOOR_WIDTH, height, 0.3, 2, 0.02), surface(height, 1.1), [
       0,
       FLOOR_Y + height / 2,
       z - 0.15,
@@ -427,12 +419,11 @@ export type Scenery = Awaited<ReturnType<typeof loadScenery>>;
  * reflections they cast, built from the same sky, photo, and ground.
  */
 export async function loadScenery(
-  id: string,
-  config: SceneryConfig,
-  ground: number,
+  id: CourtId,
   renderer: THREE.WebGLRenderer,
   pmrem: THREE.PMREMGenerator,
 ) {
+  const { scenery: config, lighting } = COURTS[id];
   const images = courtImages(id);
   const [backdropMap, map, normalMap, roughnessMap] = await Promise.all([
     loadTexture(images.backdrop, true),
@@ -466,7 +457,7 @@ export async function loadScenery(
     config.particles.kind === "petals"
       ? createPetals(config.particles.count, config.particles.color)
       : createMotes(config.particles.count, config.particles.color);
-  object.add(sky, backdrop, floor, createEdge(config.edge, maps, config), particles.object);
+  object.add(sky, backdrop, floor, createEdge(maps, config), particles.object);
   // Upload the photos now, once their sampling is final, rather than in the first frame that
   // shows this court. The wall's copies of the floor maps reuse these uploads.
   const { map: floorMap, normalMap: floorNormal, roughnessMap: floorRough } = floor.material;
@@ -478,7 +469,7 @@ export async function loadScenery(
   const reflected = new THREE.Scene();
   const groundDisc = new THREE.Mesh(
     new THREE.CircleGeometry(60, 32),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(ground).multiplyScalar(0.5) }),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(lighting.ground).multiplyScalar(0.5) }),
   );
   groundDisc.rotation.x = -Math.PI / 2;
   groundDisc.position.y = FLOOR_Y;

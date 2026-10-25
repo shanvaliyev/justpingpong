@@ -3,7 +3,9 @@ import "@fontsource/press-start-2p/latin-400.css";
 import { useEffect, useRef, useState } from "react";
 
 import { createCourtAudio, type CourtAudio } from "./audio";
-import { COURT_IDS, COURTS, createCourt, type Court, type CourtId } from "./court";
+import { bindControls } from "./controls";
+import { createCourt, type Court } from "./court";
+import { COURT_IDS, COURTS, type CourtId } from "./courts";
 import { PracticePhysics, STEP, type Phase } from "./physics";
 import { PixelIcon } from "./pixel-icon";
 import { courtImages } from "./scenery";
@@ -18,16 +20,6 @@ const firstCourt = (): CourtId => {
   delete dataset.court;
   return picked ?? randomCourt();
 };
-
-// Arrow keys share the WASD movement state.
-const KEY_ALIASES: Record<string, string> = {
-  ArrowUp: "w",
-  ArrowLeft: "a",
-  ArrowDown: "s",
-  ArrowRight: "d",
-};
-const GAME_KEYS = new Set(["w", "a", "s", "d", " ", "p", "enter"]);
-const normalizeKey = (key: string) => KEY_ALIASES[key] ?? key.toLowerCase();
 
 /** Longest frame the simulation catches up on, so a stalled tab does not fast-forward. */
 const MAX_FRAME = 0.05;
@@ -65,172 +57,91 @@ type Card = {
 
 export function PracticeGame() {
   const host = useRef<HTMLDivElement>(null);
-  const view = useRef<{ court: Court; audio: CourtAudio } | null>(null);
   const [game] = useState(() => new PracticePhysics());
+  // The 3D court and its sound, once built; null until then, or if WebGL is unavailable.
+  const [view, setView] = useState<{ court: Court; audio: CourtAudio } | null>(null);
   const [courtId, setCourtId] = useState(firstCourt);
   const [hud, setHud] = useState(() => readHud(game));
   const [help, setHelp] = useState(false);
   const [error, setError] = useState(false);
   const [muted, setMuted] = useState(false);
   const court = COURTS[courtId];
-  // The 3D setup holds the main thread for a while, so let the illustration and card paint first.
-  const [painted, setPainted] = useState(false);
 
   useEffect(() => {
-    let timer = 0;
-    const frame = requestAnimationFrame(() => (timer = window.setTimeout(() => setPainted(true))));
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!painted) return;
     const element = host.current!;
-    let court: Court;
-    try {
-      court = createCourt(element);
-    } catch {
-      setError(true);
-      return;
-    }
-    const audio = createCourtAudio();
-    view.current = { court, audio };
-
-    const keys = new Set<string>();
-    let activePointer: number | undefined;
-    let lastPointer: { x: number; y: number; time: number } | undefined;
-    let frame = 0;
-    let previousTime = performance.now();
-    let accumulator = 0;
-    let lastHud = 0;
-
-    const draw = (time: number) => {
-      const elapsed = Math.min((time - previousTime) / 1000, MAX_FRAME);
-      previousTime = time;
-      for (accumulator += elapsed * court.timeScale(); accumulator >= STEP; accumulator -= STEP) {
-        game.step();
-      }
-      const impacts = game.impacts.splice(0);
-      for (const impact of impacts) audio.impact(impact);
-      court.render(game, impacts, elapsed, accumulator / STEP);
-      if (time - lastHud > HUD_INTERVAL) {
-        lastHud = time;
-        const next = readHud(game);
-        setHud((current) => (sameHud(current, next) ? current : next));
-      }
-      frame = requestAnimationFrame(draw);
-    };
-
-    const updateDrive = () => {
-      game.drive = {
-        x: Number(keys.has("d")) - Number(keys.has("a")),
-        y: Number(keys.has("w")) - Number(keys.has("s")),
-      };
-    };
-    const onPointerMove = (event: PointerEvent) => {
-      // A mouse aims on hover; touch and pen aim only while their drag is active.
-      const tracked = event.pointerId === activePointer;
-      if (!tracked && (activePointer !== undefined || event.pointerType !== "mouse")) return;
-      if (event.pointerType === "mouse") {
-        const hand = court.handAt(event.clientX, event.clientY);
-        if (hand) {
-          game.target.x = hand.x;
-          game.target.y = hand.y;
-        }
-      } else if (lastPointer) {
-        // Touch steers like a trackpad: the paddle follows the finger's movement, not its spot,
-        // so a finger dragging below the table never covers the paddle or the ball.
-        const drag = court.handDrag(event.clientX - lastPointer.x, event.clientY - lastPointer.y);
-        game.nudge(drag.x, drag.y);
-      }
-      // A quick upward flick swings; its speed sets the power.
-      if (lastPointer) {
-        const elapsed = event.timeStamp - lastPointer.time;
-        const upwardSpeed = (lastPointer.y - event.clientY) / Math.max(8, elapsed);
-        if (elapsed < 100 && upwardSpeed > 0.45) game.swing(Math.min(1, upwardSpeed / 2));
-      }
-      lastPointer = { x: event.clientX, y: event.clientY, time: event.timeStamp };
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      if (activePointer !== undefined) return;
-      activePointer = event.pointerId;
-      element.setPointerCapture(event.pointerId);
-      lastPointer = undefined;
-      onPointerMove(event);
-      element.focus({ preventScroll: true });
-    };
-    const onPointerEnd = (event: PointerEvent) => {
-      if (event.pointerId !== activePointer) return;
-      activePointer = undefined;
-      lastPointer = undefined;
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLButtonElement) return;
-      const key = normalizeKey(event.key);
-      if (!GAME_KEYS.has(key)) return;
-      event.preventDefault();
-      keys.add(key);
-      updateDrive();
-      if (event.repeat) return;
-      if (key === " ") game.swing();
-      if (key === "p") game.togglePause();
-      if (key === "enter" && game.phase === "ready") game.start();
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      keys.delete(normalizeKey(event.key));
-      updateDrive();
-    };
-    const onBlur = () => {
-      keys.clear();
-      updateDrive();
-      activePointer = undefined;
-      lastPointer = undefined;
-      if (game.phase === "playing") game.togglePause();
-    };
-
     const listeners = new AbortController();
     const { signal } = listeners;
-    window.addEventListener("pointerdown", audio.enable, { signal });
-    window.addEventListener("keydown", audio.enable, { signal });
-    element.addEventListener("pointerdown", onPointerDown, { signal });
-    element.addEventListener("pointermove", onPointerMove, { signal });
-    for (const type of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
-      element.addEventListener(type, onPointerEnd, { signal });
-    }
-    window.addEventListener("keydown", onKeyDown, { signal });
-    window.addEventListener("keyup", onKeyUp, { signal });
-    window.addEventListener("blur", onBlur, { signal });
-    document.addEventListener("visibilitychange", () => document.hidden && onBlur(), { signal });
-    void court.ready.then(() => {
-      if (signal.aborted) return;
-      previousTime = performance.now();
-      frame = requestAnimationFrame(draw);
-      // Warm the other courts' images so restarting switches promptly. Waiting until the
-      // first court is up keeps them from competing with it for bandwidth.
-      for (const id of COURT_IDS) {
-        for (const src of Object.values(courtImages(id))) new Image().src = src;
+    let built: { court: Court; audio: CourtAudio } | undefined;
+    let frame = 0;
+
+    const build = () => {
+      let court: Court;
+      try {
+        court = createCourt(element);
+      } catch {
+        setError(true);
+        return;
       }
-    });
+      const audio = createCourtAudio();
+      built = { court, audio };
+      setView(built);
+
+      let previousTime = performance.now();
+      let accumulator = 0;
+      let lastHud = 0;
+      const draw = (time: number) => {
+        const elapsed = Math.min((time - previousTime) / 1000, MAX_FRAME);
+        previousTime = time;
+        for (accumulator += elapsed * court.timeScale(); accumulator >= STEP; accumulator -= STEP) {
+          game.step();
+        }
+        const impacts = game.impacts.splice(0);
+        for (const impact of impacts) audio.impact(impact);
+        court.render(game, impacts, elapsed, accumulator / STEP);
+        if (time - lastHud > HUD_INTERVAL) {
+          lastHud = time;
+          const next = readHud(game);
+          setHud((current) => (sameHud(current, next) ? current : next));
+        }
+        frame = requestAnimationFrame(draw);
+      };
+
+      window.addEventListener("pointerdown", audio.enable, { signal });
+      window.addEventListener("keydown", audio.enable, { signal });
+      bindControls(element, game, court, signal);
+      void court.ready.then(() => {
+        if (signal.aborted) return;
+        previousTime = performance.now();
+        frame = requestAnimationFrame(draw);
+        // Warm the other courts' images so restarting switches promptly. Waiting until the
+        // first court is up keeps them from competing with it for bandwidth.
+        for (const id of COURT_IDS) {
+          for (const src of Object.values(courtImages(id))) new Image().src = src;
+        }
+      });
+    };
+
+    // The 3D setup holds the main thread for a while, so let the illustration and card paint first.
+    let timer = 0;
+    frame = requestAnimationFrame(() => (timer = window.setTimeout(build)));
 
     return () => {
+      clearTimeout(timer);
       listeners.abort();
       cancelAnimationFrame(frame);
-      audio.dispose();
-      court.dispose();
-      view.current = null;
+      built?.audio.dispose();
+      built?.court.dispose();
     };
-  }, [game, painted]);
+  }, [game]);
 
   useEffect(() => {
-    view.current?.audio.setMuted(muted);
-  }, [muted, painted]);
+    view?.audio.setMuted(muted);
+  }, [view, muted]);
 
   useEffect(() => {
-    view.current?.court.setCourt(courtId);
-    view.current?.audio.setCourt(courtId);
-  }, [courtId, painted]);
+    view?.court.setCourt(courtId);
+    view?.audio.setCourt(courtId);
+  }, [view, courtId]);
 
   const focusCourt = () => host.current?.focus({ preventScroll: true });
   const start = () => {
