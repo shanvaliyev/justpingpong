@@ -1,4 +1,10 @@
 /* 80s Japanese arcade cabinet UI: bitmap fonts, notched pixel frames, hard shadows, no tweening. */
+/* Colour the exposed page canvas too, including mobile browser overscroll. */
+html:has(.practice-app),
+body:has(.practice-app) {
+  background: #17134a;
+}
+
 .practice-app {
   /* One "pixel" of the frames and the sprite scale; the frames sit 2 dots outside each box. */
   --px: 3px;
@@ -62,9 +68,9 @@
 
 .practice-header {
   position: absolute;
-  top: 26px;
-  right: 30px;
-  left: 30px;
+  top: calc(26px + env(safe-area-inset-top));
+  right: calc(30px + env(safe-area-inset-right));
+  left: calc(30px + env(safe-area-inset-left));
   height: 52px;
   z-index: 3;
   display: flex;
@@ -202,8 +208,8 @@
 /* Arcade HUD: a red caption over a big score, like 1UP / HI-SCORE. */
 .practice-stats {
   position: absolute;
-  top: 26px;
-  left: 30px;
+  top: calc(26px + env(safe-area-inset-top));
+  left: calc(30px + env(safe-area-inset-left));
   display: flex;
   gap: 22px;
   pointer-events: none;
@@ -328,9 +334,9 @@
 
 .court-bottom {
   position: absolute;
-  bottom: 88px;
-  left: 30px;
-  right: 30px;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  left: calc(30px + env(safe-area-inset-left));
+  right: calc(30px + env(safe-area-inset-right));
   display: flex;
   pointer-events: none;
 }
@@ -354,9 +360,9 @@
 
 .practice-footer {
   position: absolute;
-  bottom: 26px;
-  left: 30px;
-  right: 30px;
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  left: calc(30px + env(safe-area-inset-left));
+  right: calc(30px + env(safe-area-inset-right));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -428,9 +434,9 @@
 
 @media (max-width: 700px) {
   .practice-header {
-    top: 18px;
-    left: 18px;
-    right: 18px;
+    top: calc(18px + env(safe-area-inset-top));
+    left: calc(18px + env(safe-area-inset-left));
+    right: calc(18px + env(safe-area-inset-right));
     height: 112px;
     align-items: flex-end;
   }
@@ -457,8 +463,8 @@
     --dot: 2px;
   }
   .practice-stats {
-    top: 88px;
-    left: 18px;
+    top: calc(88px + env(safe-area-inset-top));
+    left: calc(18px + env(safe-area-inset-left));
     gap: 18px;
   }
   .practice-stats div {
@@ -487,16 +493,16 @@
     font-size: 12px;
   }
   .court-bottom {
-    left: 18px;
-    right: 18px;
+    left: calc(18px + env(safe-area-inset-left));
+    right: calc(18px + env(safe-area-inset-right));
   }
   .live-status {
     font-size: 8px;
     max-width: 255px;
   }
   .practice-footer {
-    left: 18px;
-    right: 18px;
+    left: calc(18px + env(safe-area-inset-left));
+    right: calc(18px + env(safe-area-inset-right));
     justify-content: center;
   }
   .footer-note {
@@ -543,10 +549,10 @@
     padding: 18px 20px 20px;
   }
   .court-bottom {
-    bottom: 66px;
+    bottom: calc(66px + env(safe-area-inset-bottom));
   }
   .practice-footer {
-    bottom: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom));
   }
 }
 @media (prefers-reduced-motion: reduce) {

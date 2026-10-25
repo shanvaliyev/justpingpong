@@ -28,7 +28,7 @@ export default defineConfig({
         name: "justpingpong",
         short_name: "justpingpong",
         description: "justpingpong - PWA Application",
-        theme_color: "#0c0c0c",
+        theme_color: "#17134a",
       },
       pwaAssets: { disabled: false, config: true },
       devOptions: { enabled: true },
