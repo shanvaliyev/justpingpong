@@ -76,8 +76,14 @@ export const COURTS: Record<CourtId, { name: string; image: string; lighting: Li
   },
 };
 
-/** Touch aims a little above the finger, so the finger does not hide the racket. */
-const TOUCH_OFFSET = 42;
+/** A touch drag moves the hand this many times the finger's travel, so a thumb covers its reach. */
+const TOUCH_GAIN = 1.5;
+// Portrait screens look down a fixed sight line at a point above the hand's rest, from as close as
+// still shows this many metres of the hand's plane either side of centre (about where the ball
+// arrives at its widest), so narrower phones step back. The fixed pitch keeps the horizon in place.
+const PORTRAIT_HALF_VIEW = 0.82;
+const PORTRAIT_FOCUS = new THREE.Vector3(0, 0.65, PLAYER_HOME.z);
+const PORTRAIT_SIGHT = new THREE.Vector3(0, 1.35, 4.6).normalize();
 // Adaptive resolution: when most of a sampling window of play runs below ~50 fps, render fewer
 // pixels. It only steps down, so a sharp image never flickers between resolutions.
 const SLOW_FRAME = 1 / 50;
@@ -335,18 +341,35 @@ export function createCourt(host: HTMLElement) {
   let lastPhase: PracticePhysics["phase"] | undefined;
   let sampled = 0;
   let slow = 0;
+  let metresPerPixel = 0;
 
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
     renderer.setPixelRatio(pixelRatio);
     renderer.setSize(width, height);
     camera.aspect = width / height;
-    const portrait = camera.aspect < 0.8;
-    camera.fov = portrait ? 58 : 45;
-    camera.position.set(0, portrait ? 1.55 : 1.35, portrait ? 4.6 : 3.1);
-    camera.lookAt(0, portrait ? 0.2 : 0.04, 0);
+    if (camera.aspect < 0.8) {
+      camera.fov = 58;
+      // Wider screens, such as tablets, keep a tall phone's distance and show more court.
+      const halfWidth =
+        Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(camera.aspect, 0.58);
+      camera.position
+        .copy(PORTRAIT_FOCUS)
+        .addScaledVector(PORTRAIT_SIGHT, PORTRAIT_HALF_VIEW / halfWidth);
+      camera.lookAt(PORTRAIT_FOCUS);
+    } else {
+      camera.fov = 45;
+      camera.position.set(0, 1.35, 3.1);
+      camera.lookAt(0, 0.04, 0);
+    }
     camera.updateProjectionMatrix();
     aimCamera.copy(camera);
+    // Metres of the hand's plane per screen pixel, at the hand's resting depth.
+    const depth = new THREE.Vector3()
+      .copy(PLAYER_HOME)
+      .sub(camera.position)
+      .dot(camera.getWorldDirection(new THREE.Vector3()));
+    metresPerPixel = (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / height;
     dirty = true;
   };
   const observer = new ResizeObserver(resize);
@@ -430,14 +453,19 @@ export function createCourt(host: HTMLElement) {
       );
     },
     /** Where the player's hand should go for a pointer at this screen position, if anywhere. */
-    handAt(clientX: number, clientY: number, touch: boolean) {
+    handAt(clientX: number, clientY: number) {
       const rect = host.getBoundingClientRect();
       pointer.set(
         ((clientX - rect.left) / rect.width) * 2 - 1,
-        -((clientY - rect.top - (touch ? TOUCH_OFFSET : 0)) / rect.height) * 2 + 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, aimCamera);
       return raycaster.ray.intersectPlane(handPlane, hand) ?? undefined;
+    },
+    /** How far a touch drag of this many screen pixels moves the player's hand, in metres. */
+    handDrag(dx: number, dy: number) {
+      const scale = metresPerPixel * TOUCH_GAIN;
+      return { x: dx * scale, y: -dy * scale };
     },
     /** Simulation speed for the next frame; a hard racket hit briefly freezes time. */
     timeScale() {

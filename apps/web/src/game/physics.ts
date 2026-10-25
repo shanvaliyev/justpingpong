@@ -35,6 +35,8 @@ const SPIN_GRIP = 0.35;
 const PADDLE_DEPTH = BALL_RADIUS + 0.008;
 
 const HAND_SPEED = 7;
+/** How far the player's hand can reach across and up from the table. */
+const REACH = { x: 1.05, low: 0.12, high: 1.05 };
 const KEYBOARD_SPEED = 1.8;
 const SWING = { reach: 0.32, speed: 3.5, recovery: 0.7 };
 const OPPONENT_SPEED = { x: 1.5, y: 2 };
@@ -273,6 +275,15 @@ export class PracticePhysics {
     this.start();
   }
 
+  /**
+   * Move the hand target by a relative drag. It stays within reach, so dragging past the edge
+   * builds no slack and reversing moves the hand at once.
+   */
+  nudge(dx: number, dy: number) {
+    this.target.x = clamp(this.target.x + dx, -REACH.x, REACH.x);
+    this.target.y = clamp(this.target.y + dy, REACH.low, REACH.high);
+  }
+
   /** Drive the hand forward; strength is 0–1. */
   swing(strength = 1) {
     if (this.phase === "playing")
@@ -317,8 +328,12 @@ export class PracticePhysics {
       value + clamp(target - value, -speed * dt, speed * dt);
     if (this.drive.x) this.target.x = this.player.x + this.drive.x * KEYBOARD_SPEED * dt;
     if (this.drive.y) this.target.y = this.player.y + this.drive.y * KEYBOARD_SPEED * dt;
-    this.player.x = approach(this.player.x, clamp(this.target.x, -1.05, 1.05), HAND_SPEED);
-    this.player.y = approach(this.player.y, clamp(this.target.y, 0.12, 1.05), HAND_SPEED);
+    this.player.x = approach(this.player.x, clamp(this.target.x, -REACH.x, REACH.x), HAND_SPEED);
+    this.player.y = approach(
+      this.player.y,
+      clamp(this.target.y, REACH.low, REACH.high),
+      HAND_SPEED,
+    );
     this.player.z = approach(this.player.z, this.target.z, SWING.speed);
     this.target.z = approach(this.target.z, PLAYER_HOME.z, SWING.recovery);
 

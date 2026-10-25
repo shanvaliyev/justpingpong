@@ -98,7 +98,7 @@ export function PracticeGame() {
 
     const keys = new Set<string>();
     let activePointer: number | undefined;
-    let lastPointer: { y: number; time: number } | undefined;
+    let lastPointer: { x: number; y: number; time: number } | undefined;
     let frame = 0;
     let previousTime = performance.now();
     let accumulator = 0;
@@ -131,10 +131,17 @@ export function PracticeGame() {
       // A mouse aims on hover; touch and pen aim only while their drag is active.
       const tracked = event.pointerId === activePointer;
       if (!tracked && (activePointer !== undefined || event.pointerType !== "mouse")) return;
-      const hand = court.handAt(event.clientX, event.clientY, event.pointerType !== "mouse");
-      if (hand) {
-        game.target.x = hand.x;
-        game.target.y = hand.y;
+      if (event.pointerType === "mouse") {
+        const hand = court.handAt(event.clientX, event.clientY);
+        if (hand) {
+          game.target.x = hand.x;
+          game.target.y = hand.y;
+        }
+      } else if (lastPointer) {
+        // Touch steers like a trackpad: the paddle follows the finger's movement, not its spot,
+        // so a finger dragging below the table never covers the paddle or the ball.
+        const drag = court.handDrag(event.clientX - lastPointer.x, event.clientY - lastPointer.y);
+        game.nudge(drag.x, drag.y);
       }
       // A quick upward flick swings; its speed sets the power.
       if (lastPointer) {
@@ -142,7 +149,7 @@ export function PracticeGame() {
         const upwardSpeed = (lastPointer.y - event.clientY) / Math.max(8, elapsed);
         if (elapsed < 100 && upwardSpeed > 0.45) game.swing(Math.min(1, upwardSpeed / 2));
       }
-      lastPointer = { y: event.clientY, time: event.timeStamp };
+      lastPointer = { x: event.clientX, y: event.clientY, time: event.timeStamp };
     };
     const onPointerDown = (event: PointerEvent) => {
       if (activePointer !== undefined) return;
@@ -263,7 +270,7 @@ export function PracticeGame() {
       eyebrow: "The basics",
       title: "Controls",
       kana: "あそびかた",
-      body: "Drag a finger to move your paddle. Hold still to block; swipe sideways on contact to aim and curve. Flick up for power and topspin. Use the pause button for a break. Misses feed a new ball.",
+      body: "Drag anywhere, even below the table, to steer your paddle; it follows your finger's movement, not its spot. Hold still to block; swipe sideways on contact to aim and curve. Flick up for power and topspin. Use the pause button for a break. Misses feed a new ball.",
       note: "Desktop shortcuts: arrows / WASD to move · Space to swing · P to pause.",
       action: { label: "Close", onClick: closeHelp },
     };
@@ -280,7 +287,7 @@ export function PracticeGame() {
       eyebrow: court.name,
       title: "Table tennis",
       kana: "卓球",
-      body: "Play against AI. Drag a finger to move your paddle; flick up to hit harder.",
+      body: "Play against AI. Drag anywhere, even below the table, to steer your paddle; flick up to hit harder.",
       action: { label: "Push start", onClick: start },
     };
   }
@@ -332,7 +339,7 @@ export function PracticeGame() {
           className="court-canvas"
           tabIndex={0}
           role="application"
-          aria-label="Table tennis court. Drag a finger to move your paddle. Swipe sideways on contact to aim; flick up to hit harder. Use the pause button to pause."
+          aria-label="Table tennis court. Drag anywhere to steer your paddle; it follows your finger's movement. Swipe sideways on contact to aim; flick up to hit harder. Use the pause button to pause."
         />
         <div className="court-grade" aria-hidden="true" />
         <div className="practice-stats" aria-label="Practice statistics">

@@ -392,7 +392,6 @@ body:has(.practice-app) {
   font-size: 8px;
   line-height: 1;
   text-transform: uppercase;
-  pointer-events: auto;
   --dot: 2px;
 }
 .control-hints span,
@@ -413,6 +412,8 @@ body:has(.practice-app) {
   font: inherit;
   text-transform: inherit;
   color: inherit;
+  /* Only the mute button takes input; a thumb steering on the hints reaches the court. */
+  pointer-events: auto;
 }
 .control-hints button:hover {
   color: var(--yellow);

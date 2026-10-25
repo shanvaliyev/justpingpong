@@ -275,3 +275,15 @@ test("pause freezes play, restart preserves best, and a settled ball feeds a new
   assert.equal(game.nextBallIn, 0);
   assert.ok(game.velocity.z > 0);
 });
+
+test("a relative drag moves the hand from where it is and builds no slack past its reach", () => {
+  const game = new PracticePhysics();
+  game.nudge(0.2, -0.1);
+  near(game.target.x, 0.2);
+  near(game.target.y, 0.26);
+  // Dragging far past the side and bottom, then back, responds to the very first reverse move.
+  game.nudge(5, -5);
+  game.nudge(-0.1, 0.1);
+  near(game.target.x, 1.05 - 0.1);
+  near(game.target.y, 0.12 + 0.1);
+});

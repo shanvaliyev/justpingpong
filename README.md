@@ -30,7 +30,7 @@ pnpm install
 
 Run `pnpm dev:web` and open the web app. The home page is a first-person table-tennis practice game; it needs no API server, database, account, or environment variables.
 
-- Mobile-first: drag one finger to position the floating paddle. Flick upward to swing forward; a stationary paddle can block. Start, pause, resume, restart, and mute all have touch controls.
+- Mobile-first: drag one finger anywhere to steer the floating paddle. Like a trackpad, it follows the finger's movement (1.5× its travel) rather than jumping under it, so you can drag below the table and keep the paddle and ball in view. Portrait phones frame the table as close as still shows the ball's widest arrivals. Flick upward to swing forward; a stationary paddle can block. Start, pause, resume, restart, and mute all have touch controls.
 - Brush left or right at contact to place and curve a shot; brushing upward (a natural upward flick) adds topspin, which dips the ball and kicks it forward off the table. Off-centre hits also steer the ball, and stronger forward strokes drive it faster. The racket's wrist picks the face angle, like a real player, so any stroke struck near the blade centre clears the net. Hitting high on the blade sends the ball deeper (the top edge of a hard drive goes long), hitting low drops it shorter, and sideways brushing can go wide.
 - Optional desktop controls: move the mouse, or use arrow keys / WASD to move, Space to swing, P to pause. Keyboard hints are hidden on touch devices; no game action requires a keyboard.
 - A friendly AI returns the ball. Misses automatically feed a new ball. Restart clears the current rally, but keeps the session best until the page reloads.
