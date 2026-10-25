@@ -180,29 +180,10 @@ body:has(.practice-app) {
   outline: 3px solid #fff2c5;
   outline-offset: -3px;
 }
+/* The court fades in over the blurred backdrop shown while it loads. */
 .court-canvas canvas {
   display: block;
-}
-/* A light colour grade and vignette over the painting and the 3D layer, so both read as one shot. */
-.court-grade {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 75% 70% at 50% 58%, transparent 55%, var(--vignette, #1b1f3a59) 100%),
-    linear-gradient(180deg, var(--grade-top, transparent), transparent 45%);
-}
-[data-court="sakura"] .court-grade {
-  --vignette: #6a4a5a40;
-  --grade-top: #fff4e014;
-}
-[data-court="seaside"] .court-grade {
-  --vignette: #4a2a5066;
-  --grade-top: #ffb47a1f;
-}
-[data-court="tokyo"] .court-grade {
-  --vignette: #0d1236a6;
-  --grade-top: #3a3f9a26;
+  transition: opacity 0.5s ease-out;
 }
 
 /* Arcade HUD: a red caption over a big score, like 1UP / HI-SCORE. */

@@ -6,6 +6,7 @@ import { createCourtAudio, type CourtAudio } from "./audio";
 import { COURT_IDS, COURTS, createCourt, type Court, type CourtId } from "./court";
 import { PracticePhysics, STEP, type Phase } from "./physics";
 import { PixelIcon } from "./pixel-icon";
+import { courtImages } from "./scenery";
 import "./practice.css";
 
 const randomCourt = (): CourtId => COURT_IDS[Math.floor(Math.random() * COURT_IDS.length)];
@@ -205,9 +206,11 @@ export function PracticeGame() {
       if (signal.aborted) return;
       previousTime = performance.now();
       frame = requestAnimationFrame(draw);
-      // Warm the other backgrounds so restarting does not leave an empty court. Waiting until the
+      // Warm the other courts' images so restarting switches promptly. Waiting until the
       // first court is up keeps them from competing with it for bandwidth.
-      for (const { image } of Object.values(COURTS)) new Image().src = image;
+      for (const id of COURT_IDS) {
+        for (const src of Object.values(courtImages(id))) new Image().src = src;
+      }
     });
 
     return () => {
@@ -332,7 +335,7 @@ export function PracticeGame() {
         className="practice-stage"
         aria-label="Table tennis practice"
         data-court={courtId}
-        style={{ backgroundImage: `url(${court.image})` }}
+        style={{ backgroundImage: `url(${courtImages(courtId).backdrop})` }}
       >
         <div
           ref={host}
@@ -341,7 +344,6 @@ export function PracticeGame() {
           role="application"
           aria-label="Table tennis court. Drag anywhere to steer your paddle; it follows your finger's movement. Swipe sideways on contact to aim; flick up to hit harder. Use the pause button to pause."
         />
-        <div className="court-grade" aria-hidden="true" />
         <div className="practice-stats" aria-label="Practice statistics">
           <div>
             <span>Rally</span>

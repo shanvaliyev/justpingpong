@@ -1,12 +1,15 @@
 import * as THREE from "three";
 
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 import { createBall } from "./ball";
 import { createImpactEffects } from "./impacts";
 import { PLAYER_HOME, TABLE, type Impact, type PracticePhysics } from "./physics";
+import { createPost, type Grade } from "./post";
 import { createRacket } from "./racket";
-import { canvasTexture, radialTexture, seededRandom } from "./textures";
+import { FLOOR_Y, loadScenery, type Scenery, type SceneryConfig } from "./scenery";
+import { canvasTexture, grainNormalTexture, radialTexture, seededRandom } from "./textures";
 
 type Light = { color: number; intensity: number; position: [number, number, number] };
 type Lighting = {
@@ -14,64 +17,115 @@ type Lighting = {
   sky: number;
   ground: number;
   ambient: number;
+  /** The sun or moon: a far light that casts the main shadows. */
   key: Light;
   rim: Light;
+  /** An optional floodlight that throws a pool of light, and its own shadows, over the table. */
+  lamp?: Light & { angle: number };
   environment: number;
-  shadow: number;
   glow: number;
 };
 
 export const COURT_IDS = ["sakura", "seaside", "tokyo"] as const;
 export type CourtId = (typeof COURT_IDS)[number];
 
-// Lights are matched to each illustration so the 3D objects sit in the painting:
-// the sakura sun is high on the left, the seaside sun sets behind the far right, and the
-// Tokyo rooftop is lit by a warm lamp overhead with the blue city behind.
-// index.html preloads the first court's image by id; keep its list in sync.
-export const COURTS: Record<CourtId, { name: string; image: string; lighting: Lighting }> = {
+type CourtConfig = {
+  name: string;
+  scenery: SceneryConfig;
+  lighting: Lighting;
+  /** Air between the camera and the edge of the court. */
+  haze: { color: number; density: number };
+  grade: Grade;
+};
+
+// Each court is a real 3D floor and edge under a lens-blurred photo of the distance. Lights follow
+// the photo: Kyoto's sun is high on the left, Shonan's sets ahead on the right behind the table, and
+// the Tokyo rooftop sits under a warm floodlight with the blue-hour city beyond.
+// index.html preloads the first court's images by id; keep its list in sync.
+export const COURTS: Record<CourtId, CourtConfig> = {
   sakura: {
-    name: "Sakura court",
-    image: "/game/sakura-court.webp",
+    name: "Kyoto sakura terrace",
+    scenery: {
+      backdrop: { horizon: 0.5, span: 84, pan: 0.1, boost: 0.6 },
+      sky: { horizon: 0xd7e6f2, zenith: 0x76afe4 },
+      floor: { tile: 2, tint: 0xd8d2ca, bumps: 0.8 },
+      edge: { kind: "wall", distance: 6.5 },
+      particles: { kind: "petals", color: 0xffc8d8, count: 160 },
+    },
     lighting: {
-      exposure: 1.05,
-      sky: 0xd6ebff,
-      ground: 0xf3c9aa,
-      ambient: 1.1,
-      key: { color: 0xfff0d8, intensity: 3.1, position: [-3.5, 6, 1.5] },
-      rim: { color: 0xc8e2ff, intensity: 0.8, position: [2, 3, -5] },
-      environment: 0.55,
-      shadow: 0.3,
-      glow: 0.12,
+      exposure: 0.9,
+      sky: 0xbcd6f5,
+      ground: 0xb9ab9a,
+      ambient: 0.55,
+      key: { color: 0xfff1dc, intensity: 3, position: [-3.5, 6, 1.5] },
+      rim: { color: 0xd0e4ff, intensity: 0.6, position: [2, 3, -5] },
+      environment: 0.9,
+      glow: 0.06,
+    },
+    haze: { color: 0xdde6f0, density: 0.012 },
+    grade: {
+      bloom: 0.5,
+      lift: [0, 0.008, 0.02],
+      gain: [1.03, 1, 0.97],
+      saturation: 1.1,
+      contrast: 0.4,
     },
   },
   seaside: {
-    name: "Seaside court",
-    image: "/game/seaside-court.webp",
+    name: "Shonan sunset boardwalk",
+    scenery: {
+      backdrop: { horizon: 0.58, span: 84, pan: 0.1, boost: 5 },
+      sky: { horizon: 0xf0a070, zenith: 0x3c4f77 },
+      floor: { tile: 1.2, tint: 0xffffff, bumps: 1 },
+      edge: { kind: "rail", distance: 6 },
+      particles: { kind: "motes", color: 0xffd29a, count: 60 },
+    },
     lighting: {
       exposure: 1,
-      sky: 0xcaa8e6,
-      ground: 0xffbf96,
-      ambient: 1.35,
-      key: { color: 0xffad73, intensity: 3.4, position: [4.5, 2.6, -6] },
-      rim: { color: 0xffa8bc, intensity: 1.3, position: [-2, 3, 5] },
-      environment: 1.05,
-      shadow: 0.34,
-      glow: 0.22,
+      sky: 0x8f8fc8,
+      ground: 0xc89a78,
+      ambient: 0.45,
+      key: { color: 0xffb470, intensity: 3.5, position: [0.9, 1.7, -7.9] },
+      rim: { color: 0xff9fb0, intensity: 0.5, position: [-2, 3, 5] },
+      environment: 1,
+      glow: 0.18,
+    },
+    haze: { color: 0xe7a988, density: 0.02 },
+    grade: {
+      bloom: 0.9,
+      lift: [0.025, 0, 0.035],
+      gain: [1.05, 0.99, 0.92],
+      saturation: 1.08,
+      contrast: 0.3,
     },
   },
   tokyo: {
     name: "Tokyo rooftop",
-    image: "/game/tokyo-court.webp",
+    scenery: {
+      backdrop: { horizon: 0.39, span: 84, pan: -0.12, boost: 4 },
+      sky: { horizon: 0x2a4f95, zenith: 0x11509e },
+      floor: { tile: 3, tint: 0xffffff, bumps: 0.8 },
+      edge: { kind: "parapet", distance: 6.5 },
+      particles: { kind: "motes", color: 0xcfe0ff, count: 40 },
+    },
     lighting: {
-      exposure: 1.05,
-      sky: 0x7b85dc,
-      ground: 0x55537e,
-      ambient: 1,
-      key: { color: 0xffd09a, intensity: 2.6, position: [0.8, 6, 1.4] },
-      rim: { color: 0x8fa8ff, intensity: 1.4, position: [0, 2.5, -6] },
-      environment: 0.6,
-      shadow: 0.4,
-      glow: 0.4,
+      exposure: 1,
+      sky: 0x3a4c9a,
+      ground: 0x30303e,
+      ambient: 0.35,
+      key: { color: 0x9db4ff, intensity: 0.5, position: [-1, 6, -2] },
+      rim: { color: 0x8fa8ff, intensity: 1, position: [0, 2.5, -6] },
+      lamp: { color: 0xffc890, intensity: 28, position: [-1.2, 5.2, 1.4], angle: 0.8 },
+      environment: 0.9,
+      glow: 0.35,
+    },
+    haze: { color: 0x1c2550, density: 0.03 },
+    grade: {
+      bloom: 1.1,
+      lift: [0, 0.01, 0.04],
+      gain: [1.03, 0.98, 0.95],
+      saturation: 1.05,
+      contrast: 0.3,
     },
   },
 };
@@ -84,11 +138,15 @@ const TOUCH_GAIN = 1.5;
 const PORTRAIT_HALF_VIEW = 0.82;
 const PORTRAIT_FOCUS = new THREE.Vector3(0, 0.65, PLAYER_HOME.z);
 const PORTRAIT_SIGHT = new THREE.Vector3(0, 1.35, 4.6).normalize();
-// Adaptive resolution: when most of a sampling window of play runs below ~50 fps, render fewer
-// pixels. It only steps down, so a sharp image never flickers between resolutions.
+// Adaptive quality: when most of a sampling window of play runs below ~50 fps, render fewer
+// pixels, and at the lowest resolution stop antialiasing. It only steps down, so a sharp image
+// never flickers between qualities.
 const SLOW_FRAME = 1 / 50;
 const SAMPLE_TIME = 2;
 const MIN_PIXEL_RATIO = 1;
+/** A player hit at least this strong (0–1) gets a moment of slow motion. */
+const SLOW_MOTION_HIT = 0.85;
+const SLOW_MOTION_TIME = 0.3;
 
 /** Tournament-blue top with painted lines and a faint matte grain. */
 function tableTexture() {
@@ -96,7 +154,7 @@ function tableTexture() {
   const height = Math.round((width * TABLE.halfLength) / TABLE.halfWidth);
   const scale = width / (TABLE.halfWidth * 2);
   return canvasTexture(width, height, (ctx) => {
-    ctx.fillStyle = "#1f5f9f";
+    ctx.fillStyle = "#174f8c";
     ctx.fillRect(0, 0, width, height);
     const image = ctx.getImageData(0, 0, width, height);
     const rand = seededRandom(1234567);
@@ -124,6 +182,42 @@ function tableTexture() {
   });
 }
 
+/**
+ * Where the top is glossy or worn: smudges and play wear break up reflections the way a real,
+ * used table does. The green channel is the roughness.
+ */
+function tableRoughness() {
+  const texture = canvasTexture(256, 460, (ctx) => {
+    ctx.fillStyle = "rgb(128,128,128)";
+    ctx.fillRect(0, 0, 256, 460);
+    const rand = seededRandom(8675309);
+    for (let i = 0; i < 60; i++) {
+      const x = rand() * 256;
+      const y = rand() * 460;
+      const radius = 10 + rand() * 50;
+      const level = rand() < 0.5 ? 90 : 175;
+      const smudge = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      smudge.addColorStop(0, `rgba(${level},${level},${level},${0.15 + rand() * 0.25})`);
+      smudge.addColorStop(1, `rgba(${level},${level},${level},0)`);
+      ctx.fillStyle = smudge;
+      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    }
+    // Hands and balls wear the ends of the table dull.
+    for (const [from, to] of [
+      [0, 70],
+      [460, 390],
+    ]) {
+      const wear = ctx.createLinearGradient(0, from, 0, to);
+      wear.addColorStop(0, "rgba(190,190,190,0.5)");
+      wear.addColorStop(1, "rgba(190,190,190,0)");
+      ctx.fillStyle = wear;
+      ctx.fillRect(0, Math.min(from, to), 256, 70);
+    }
+  });
+  texture.colorSpace = THREE.NoColorSpace;
+  return texture;
+}
+
 function netTexture() {
   const texture = canvasTexture(512, 48, (ctx) => {
     ctx.strokeStyle = "rgba(20, 30, 46, 0.85)";
@@ -146,7 +240,7 @@ function netTexture() {
   return texture;
 }
 
-/** Table, net, and the floor shading under them. Every part casts and receives shadows. */
+/** Table and net, with soft contact shade where they meet the floor. Every part casts shadows. */
 function createTable() {
   const object = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({
@@ -169,20 +263,32 @@ function createTable() {
     add(new THREE.BoxGeometry(...size), material).position.set(...position);
   };
 
-  // A clear-coated top with painted lines, a dark edge band, and a steel undercarriage.
+  // A lacquered top with painted lines over a rounded, dark edge band and a steel undercarriage.
+  // Fine orange peel and uneven gloss make its reflections break up like a real table's.
+  const bumps = grainNormalTexture(128, 5, 99);
+  bumps.repeat.set(8, 14);
   const top = new THREE.MeshPhysicalMaterial({
     map: tableTexture(),
-    roughness: 0.62,
-    clearcoat: 0.35,
-    clearcoatRoughness: 0.32,
+    roughnessMap: tableRoughness(),
+    normalMap: bumps,
+    normalScale: new THREE.Vector2(0.12, 0.12),
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.3,
+    envMapIntensity: 0.45,
   });
   const edge = new THREE.MeshPhysicalMaterial({ color: 0x163f68, roughness: 0.45, clearcoat: 0.4 });
-  box(
-    [TABLE.halfWidth * 2, 0.025, TABLE.halfLength * 2],
-    [0, -0.0125, 0],
-    [edge, edge, top, edge, edge, edge],
+  add(
+    new RoundedBoxGeometry(TABLE.halfWidth * 2, 0.025, TABLE.halfLength * 2, 2, 0.006),
+    edge,
+  ).position.y = -0.0125;
+  const surface = add(
+    new THREE.PlaneGeometry(TABLE.halfWidth * 2 - 0.01, TABLE.halfLength * 2 - 0.01),
+    top,
   );
+  surface.rotation.x = -Math.PI / 2;
+  surface.position.y = 0.0002;
   box([TABLE.halfWidth * 2 - 0.08, 0.05, TABLE.halfLength * 2 - 0.1], [0, -0.05, 0], steel);
+  const feet: [number, number][] = [];
   for (const z of [-1, 1]) {
     for (const x of [-0.64, 0.64]) {
       add(new THREE.CylinderGeometry(0.022, 0.022, 0.68, 16), steel).position.set(
@@ -195,6 +301,7 @@ function createTable() {
         -0.745,
         z * 1.02,
       );
+      feet.push([x, z * 1.02]);
     }
     box([1.28, 0.03, 0.03], [0, -0.62, z * 1.02], steel);
     // Folding braces from each leg frame up towards the table's centre.
@@ -226,24 +333,23 @@ function createTable() {
     new THREE.MeshStandardMaterial({ color: 0xfbfaf4, roughness: 0.6 }),
   );
 
-  // Only shadows are drawn over the illustrated floor, plus a soft contact shade under the table.
-  const floorShadow = new THREE.ShadowMaterial({ opacity: 0.3 });
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), floorShadow);
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.76;
-  floor.receiveShadow = true;
-  const contact = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.6, 3.8),
-    new THREE.MeshBasicMaterial({
-      map: radialTexture("rgba(10,14,30,0.42)", "rgba(10,14,30,0)"),
-      transparent: true,
-      depthWrite: false,
-    }),
-  );
-  contact.rotation.x = -Math.PI / 2;
-  contact.position.y = -0.758;
-  object.add(floor, contact);
-  return { object, floorShadow };
+  // Contact shade: the sky is hidden under the table and right around each foot.
+  const shade = (width: number, depth: number, x: number, z: number, darkness: number) => {
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(width, depth),
+      new THREE.MeshBasicMaterial({
+        map: radialTexture(`rgba(6,8,16,${darkness})`, "rgba(6,8,16,0)"),
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(x, FLOOR_Y + 0.002, z);
+    object.add(mesh);
+  };
+  shade(2.6, 3.8, 0, 0, 0.5);
+  for (const [x, z] of feet) shade(0.2, 0.2, x, z, 0.75);
+  return object;
 }
 
 /** Free GPU resources of every mesh, sprite, and point cloud, including material textures. */
@@ -267,53 +373,57 @@ function disposeTree(root: THREE.Object3D) {
 
 export type Court = ReturnType<typeof createCourt>;
 
-/** Decode an illustration off the main thread; same-origin, so it shares the page's preload. */
-async function loadImage(src: string) {
-  const image = new Image();
-  image.src = src;
-  await image.decode();
-  return image;
-}
-
 /**
- * The 3D court drawn over the illustrated background inside `host`. Nothing is drawn until
- * `ready` resolves: the first court's reflections are built and every shader has compiled.
+ * The 3D court inside `host`. Nothing is drawn until `ready` resolves: the first court's scenery
+ * and reflections are built and every shader has compiled.
  */
 export function createCourt(host: HTMLElement) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  const renderer = new THREE.WebGLRenderer({
+    antialias: false,
+    stencil: false,
+    powerPreference: "high-performance",
+  });
   let pixelRatio = Math.min(window.devicePixelRatio, 2);
   renderer.setPixelRatio(pixelRatio);
-  renderer.setClearColor(0x000000, 0);
-  renderer.toneMapping = THREE.NeutralToneMapping;
+  // Tone mapping happens in the post pass, after bloom, so bright light can glow.
+  renderer.toneMapping = THREE.NoToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.domElement.style.opacity = "0";
   host.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 30);
-  // Shake moves the drawn camera only; aiming always uses the steady pose.
+  scene.fog = new THREE.FogExp2(0, 0);
+  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 400);
+  // Shake, drift, and follow move the drawn camera only; aiming always uses the steady pose.
   const aimCamera = camera.clone();
+  const post = createPost(renderer, scene, camera);
 
   const hemisphere = new THREE.HemisphereLight();
   const key = new THREE.DirectionalLight();
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
   Object.assign(key.shadow.camera, {
-    left: -2.8,
-    right: 2.8,
-    top: 2.8,
-    bottom: -2.8,
-    near: 1,
-    far: 20,
+    left: -6,
+    right: 6,
+    top: 6,
+    bottom: -6,
+    near: 0.5,
+    far: 40,
   });
   key.shadow.normalBias = 0.02;
-  key.shadow.radius = 3;
+  key.shadow.radius = 4;
   const rim = new THREE.DirectionalLight();
+  // Present on every court so changing courts never changes the shaders; off unless a court has one.
+  const lamp = new THREE.SpotLight(0xffffff, 0, 0, 0.7, 0.75, 2);
+  lamp.castShadow = true;
+  lamp.shadow.mapSize.set(1024, 1024);
+  lamp.shadow.normalBias = 0.02;
+  lamp.shadow.radius = 4;
+  lamp.target.position.set(0, FLOOR_Y, -0.2);
 
-  // Reflections come from each court's painting, built once per court. A neutral studio stands in
-  // only if a painting cannot load. Compile the converter while the first painting downloads.
   const pmrem = new THREE.PMREMGenerator(renderer);
-  pmrem.compileEquirectangularShader();
-  const environments = new Map<CourtId, THREE.Texture>();
+  const sceneries = new Map<CourtId, Promise<Scenery>>();
+  let shown: Scenery | undefined;
   let studio: THREE.Texture | undefined;
 
   const table = createTable();
@@ -325,7 +435,9 @@ export function createCourt(host: HTMLElement) {
     hemisphere,
     key,
     rim,
-    table.object,
+    lamp,
+    lamp.target,
+    table,
     player.object,
     opponent.object,
     ball.object,
@@ -334,9 +446,14 @@ export function createCourt(host: HTMLElement) {
 
   let shake = 0;
   let hitStop = 0;
+  let slowMotion = 0;
+  let zoom = 0;
   let clock = 0;
+  let ambientClock = 0;
+  const follow = { yaw: 0, pitch: 0 };
   const position = new THREE.Vector3();
-  // Outside play nothing moves, so a frame is drawn only when the view or the phase changes.
+  // Paused, nothing moves, so a frame is drawn only when the view or the phase changes. The title
+  // screen keeps its petals, dust, and camera drift alive.
   let dirty = true;
   let lastPhase: PracticePhysics["phase"] | undefined;
   let sampled = 0;
@@ -346,7 +463,7 @@ export function createCourt(host: HTMLElement) {
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
     renderer.setPixelRatio(pixelRatio);
-    renderer.setSize(width, height);
+    post.setSize(width, height);
     camera.aspect = width / height;
     if (camera.aspect < 0.8) {
       camera.fov = 58;
@@ -358,9 +475,10 @@ export function createCourt(host: HTMLElement) {
         .addScaledVector(PORTRAIT_SIGHT, PORTRAIT_HALF_VIEW / halfWidth);
       camera.lookAt(PORTRAIT_FOCUS);
     } else {
-      camera.fov = 45;
-      camera.position.set(0, 1.35, 3.1);
-      camera.lookAt(0, 0.04, 0);
+      // Level enough to see the horizon above the far end, like the portrait view.
+      camera.fov = 50;
+      camera.position.set(0, 1.4, 3.3);
+      camera.lookAt(0, 0.35, 0);
     }
     camera.updateProjectionMatrix();
     aimCamera.copy(camera);
@@ -382,73 +500,109 @@ export function createCourt(host: HTMLElement) {
   const hand = new THREE.Vector3();
   let courtRequest = 0;
   let disposed = false;
-  let compiling = false;
+  let compiled = false;
   let markReady!: () => void;
   const ready = new Promise<void>((resolve) => (markReady = resolve));
-  const useEnvironment = (texture: THREE.Texture) => {
-    scene.environment = texture;
-    dirty = true;
-    // Reflections are part of every lit shader, so compile once the first ones exist; with
-    // KHR_parallel_shader_compile this keeps the main thread free.
-    if (compiling) return;
-    compiling = true;
-    void renderer.compileAsync(scene, camera).then(() => {
-      if (disposed) return;
-      // A shader's first draw and each buffer's upload also block. Draw once with the hidden
-      // trails, rings, flashes, and sparks shown, so none of that lands on a rally's first hit,
-      // then clear it before the first real frame.
-      const hidden: THREE.Object3D[] = [];
-      scene.traverse((object) => {
+
+  /** Build a court's scenery once, hidden, with its shaders compiled; restarts reuse it. */
+  const loadCourt = (id: CourtId) => {
+    let loading = sceneries.get(id);
+    if (!loading) {
+      const { scenery, lighting } = COURTS[id];
+      loading = loadScenery(id, scenery, lighting.ground, renderer, pmrem).then(async (built) => {
+        built.object.visible = false;
+        scene.add(built.object);
+        // The first court compiles with everything else below; reflections are part of every
+        // lit shader, so the first ones must exist before it does.
+        scene.environment ??= built.environment;
+        if (compiled) await renderer.compileAsync(built.object, camera, scene);
+        return built;
+      });
+      sceneries.set(id, loading);
+    }
+    return loading;
+  };
+
+  const applyLighting = (id: CourtId) => {
+    const { lighting, haze, grade } = COURTS[id];
+    renderer.toneMappingExposure = lighting.exposure;
+    hemisphere.color.set(lighting.sky);
+    hemisphere.groundColor.set(lighting.ground);
+    hemisphere.intensity = lighting.ambient;
+    key.color.set(lighting.key.color);
+    key.intensity = lighting.key.intensity;
+    key.position.set(...lighting.key.position).setLength(15);
+    rim.color.set(lighting.rim.color);
+    rim.intensity = lighting.rim.intensity;
+    rim.position.set(...lighting.rim.position);
+    lamp.intensity = lighting.lamp?.intensity ?? 0;
+    // An unlit lamp draws its (unused) shadow map once instead of every frame. It must exist:
+    // WebGL2 skips every lit draw call whose shadow sampler has no depth texture bound.
+    lamp.shadow.autoUpdate = !!lighting.lamp;
+    lamp.shadow.needsUpdate = true;
+    if (lighting.lamp) {
+      lamp.color.set(lighting.lamp.color);
+      lamp.position.set(...lighting.lamp.position);
+      lamp.angle = lighting.lamp.angle;
+    }
+    const fog = scene.fog as THREE.FogExp2;
+    fog.color.set(haze.color);
+    fog.density = haze.density;
+    scene.environmentIntensity = lighting.environment;
+    ball.setGlow(lighting.glow);
+    post.setGrade(grade);
+  };
+
+  /** Draw once with hidden trails, rings, flashes, and sparks shown, so their first use never stalls. */
+  const warmUp = () => {
+    const hidden: THREE.Object3D[] = [];
+    for (const root of [table, player.object, opponent.object, ball.object, effects.object]) {
+      root.traverse((object) => {
         if (object.visible) return;
         hidden.push(object);
         object.visible = true;
       });
-      renderer.render(scene, camera);
-      for (const object of hidden) object.visible = false;
-      renderer.clear();
+    }
+    post.render(0);
+    for (const object of hidden) object.visible = false;
+  };
+
+  const show = (id: CourtId, next: Scenery | undefined) => {
+    if (shown) shown.object.visible = false;
+    shown = next;
+    if (next) {
+      next.object.visible = true;
+      scene.environment = next.environment;
+    }
+    applyLighting(id);
+    dirty = true;
+    if (compiled) return;
+    compiled = true;
+    // With KHR_parallel_shader_compile this keeps the main thread free.
+    void renderer.compileAsync(scene, camera).then(() => {
+      if (disposed) return;
+      warmUp();
+      renderer.domElement.style.opacity = "1";
       markReady();
     });
   };
 
   return {
     ready,
-    /** Match lights, reflections, and ball glow to the illustrated court behind the canvas. */
+    /** Switch to a court's scenery, lights, and look once it has loaded. */
     setCourt(id: CourtId) {
-      const { image, lighting } = COURTS[id];
-      renderer.toneMappingExposure = lighting.exposure;
-      hemisphere.color.set(lighting.sky);
-      hemisphere.groundColor.set(lighting.ground);
-      hemisphere.intensity = lighting.ambient;
-      key.color.set(lighting.key.color);
-      key.intensity = lighting.key.intensity;
-      key.position.set(...lighting.key.position).setLength(8);
-      rim.color.set(lighting.rim.color);
-      rim.intensity = lighting.rim.intensity;
-      rim.position.set(...lighting.rim.position);
-      scene.environmentIntensity = lighting.environment;
-      table.floorShadow.opacity = lighting.shadow;
-      ball.setGlow(lighting.glow);
-      dirty = true;
       const request = ++courtRequest;
-      const built = environments.get(id);
-      if (built) return useEnvironment(built);
-      loadImage(image).then(
-        (picture) => {
-          if (request !== courtRequest || disposed) return;
-          const texture = new THREE.Texture(picture);
-          texture.mapping = THREE.EquirectangularReflectionMapping;
-          texture.colorSpace = THREE.SRGBColorSpace;
-          texture.needsUpdate = true;
-          const next = pmrem.fromEquirectangular(texture).texture;
-          texture.dispose();
-          environments.set(id, next);
-          useEnvironment(next);
+      loadCourt(id).then(
+        (built) => {
+          if (request === courtRequest && !disposed) show(id, built);
         },
         () => {
-          // Keep the current reflections; the studio is only for a court with none yet.
-          if (request !== courtRequest || disposed || scene.environment) return;
+          sceneries.delete(id);
+          // Keep the current court; with none yet, play over a neutral studio.
+          if (request !== courtRequest || disposed || compiled) return;
           studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-          useEnvironment(studio);
+          scene.environment = studio;
+          show(id, undefined);
         },
       );
     },
@@ -467,13 +621,16 @@ export function createCourt(host: HTMLElement) {
       const scale = metresPerPixel * TOUCH_GAIN;
       return { x: dx * scale, y: -dy * scale };
     },
-    /** Simulation speed for the next frame; a hard racket hit briefly freezes time. */
+    /** Simulation speed for the next frame: a hard hit freezes time, then eases out of slow motion. */
     timeScale() {
-      return hitStop > 0 ? 0.1 : 1;
+      if (hitStop > 0) return 0.1;
+      if (slowMotion > 0) return 1 - 0.6 * (slowMotion / SLOW_MOTION_TIME);
+      return 1;
     },
     render(game: PracticePhysics, impacts: readonly Impact[], elapsed: number, alpha: number) {
       const playing = game.phase === "playing";
-      if (!playing && !dirty && game.phase === lastPhase) return;
+      const alive = game.phase !== "paused";
+      if (!alive && !dirty && game.phase === lastPhase) return;
       dirty = false;
       lastPhase = game.phase;
       if (playing) {
@@ -483,20 +640,27 @@ export function createCourt(host: HTMLElement) {
           if (slow > sampled / 2 && pixelRatio > MIN_PIXEL_RATIO) {
             pixelRatio = Math.max(MIN_PIXEL_RATIO, pixelRatio - 0.5);
             resize();
+          } else if (slow > sampled / 2) {
+            post.stopAntialiasing();
           }
           sampled = slow = 0;
         }
       }
       const dt = playing ? elapsed : 0;
+      const ambientDt = alive ? elapsed : 0;
       if (!playing) alpha = 1;
       hitStop = Math.max(0, hitStop - dt);
+      slowMotion = Math.max(0, slowMotion - dt);
       clock += dt;
+      ambientClock += ambientDt;
       for (const impact of impacts) {
         const strength = Math.min(1, impact.speed / 7);
         if (impact.surface === "player") {
           player.hit(strength);
           shake = Math.min(1, shake + strength * strength * 0.9);
+          zoom = Math.min(3, zoom + strength * strength * 2.5);
           if (strength > 0.6) hitStop = 0.05 + (strength - 0.6) * 0.06;
+          if (strength >= SLOW_MOTION_HIT) slowMotion = SLOW_MOTION_TIME;
         }
         if (impact.surface === "opponent") opponent.hit(strength);
         effects.add(impact, strength, camera.quaternion);
@@ -505,23 +669,37 @@ export function createCourt(host: HTMLElement) {
       player.update(position.lerpVectors(game.previousPlayer, game.player, alpha), dt);
       opponent.update(position.lerpVectors(game.previousOpponent, game.opponent, alpha), dt);
       ball.update(game, alpha, dt, camera.position);
+      shown?.update(ambientDt, ambientClock);
 
-      // Camera shake from the drawn camera only; it decays fast so play stays readable.
+      // The drawn camera breathes like a handheld shot, leans a little towards the ball, punches
+      // in on hard hits, and shakes; all of it is small and fast to settle so play stays readable.
+      const settle = 1 - Math.exp(-ambientDt * 2.5);
+      const ballVisible = playing && game.nextBallIn <= 0;
+      follow.yaw += ((ballVisible ? -game.ball.x * 0.02 : 0) - follow.yaw) * settle;
+      follow.pitch += ((ballVisible ? (game.ball.y - 0.3) * 0.012 : 0) - follow.pitch) * settle;
+      zoom *= Math.exp(-dt * 5);
       shake = Math.max(0, shake - dt * 2.8);
       const amount = shake * shake * 0.012;
+      const t = ambientClock;
+      camera.position.copy(aimCamera.position);
+      camera.position.x += Math.sin(t * 0.37) * 0.012;
+      camera.position.y += Math.sin(t * 0.29 + 1) * 0.008;
       camera.quaternion.copy(aimCamera.quaternion);
-      camera.rotateX(Math.sin(clock * 61) * amount);
-      camera.rotateY(Math.sin(clock * 47 + 1.3) * amount);
+      camera.rotateY(follow.yaw + Math.sin(t * 0.23) * 0.003 + Math.sin(clock * 47 + 1.3) * amount);
+      camera.rotateX(follow.pitch + Math.sin(t * 0.31 + 2) * 0.002 + Math.sin(clock * 61) * amount);
       camera.rotateZ(Math.sin(clock * 53 + 2.1) * amount * 0.6);
-      renderer.render(scene, camera);
+      camera.fov = aimCamera.fov - zoom;
+      camera.updateProjectionMatrix();
+      post.render(elapsed);
     },
     dispose() {
       disposed = true;
       observer.disconnect();
-      for (const texture of environments.values()) texture.dispose();
+      for (const loading of sceneries.values()) void loading.then((built) => built.dispose());
       studio?.dispose();
       pmrem.dispose();
       disposeTree(scene);
+      post.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     },

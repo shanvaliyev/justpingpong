@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import { clamp, type Vec3 } from "./physics";
-import { canvasTexture, seededRandom } from "./textures";
+import { canvasTexture, grainNormalTexture, seededRandom } from "./textures";
 
 // Real shakehand racket proportions in metres (ITTF-sized blade, flared handle), drawn a little
 // larger than life so it still reads at game distance. The physics contact circle stays separate.
@@ -127,12 +127,20 @@ function handleGeometry() {
  */
 export function createRacket(options: { side: 1 | -1; forehand: "red" | "black" }) {
   const { side } = options;
+  // Tacky rubber: fine pores break up its gloss, and sheen lights its rim at grazing angles.
+  const pores = grainNormalTexture(64, 8, 31);
+  pores.repeat.set(1 / 0.03, 1 / 0.03);
   const rubber = (map: THREE.Texture) =>
     new THREE.MeshPhysicalMaterial({
       map,
-      roughness: 0.48,
+      normalMap: pores,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughness: 0.5,
       clearcoat: 0.3,
       clearcoatRoughness: 0.5,
+      sheen: 0.6,
+      sheenRoughness: 0.4,
+      sheenColor: 0xffffff,
       envMapIntensity: 0.5,
     });
   const shadowed = (mesh: THREE.Mesh) => {

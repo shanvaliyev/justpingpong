@@ -5,18 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>justpingpong</title>
     <script>
-      // Pick the game's first court now, so its painting downloads alongside the app instead of
-      // after it. Keep the ids and paths in sync with COURTS in src/game/court.ts.
+      // Pick the game's first court now, so its images download alongside the app instead of
+      // after it. Keep the ids and paths in sync with COURTS in src/game/court.ts and courtImages
+      // in src/game/scenery.ts.
       if (location.pathname === "/") {
         const courts = ["sakura", "seaside", "tokyo"];
         const court = courts[Math.floor(Math.random() * courts.length)];
         document.documentElement.dataset.court = court;
-        const preload = document.createElement("link");
-        preload.rel = "preload";
-        preload.as = "image";
-        preload.href = `/game/${court}-court.webp`;
-        preload.fetchPriority = "high";
-        document.head.append(preload);
+        for (const image of ["backdrop", "floor", "floor-normal", "floor-rough"]) {
+          const preload = document.createElement("link");
+          preload.rel = "preload";
+          preload.as = "image";
+          preload.href = `/game/courts/${court}-${image}.webp`;
+          preload.fetchPriority = image === "backdrop" ? "high" : "auto";
+          document.head.append(preload);
+        }
       }
     </script>
   </head>
