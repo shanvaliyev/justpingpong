@@ -5,7 +5,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { createBall } from "./ball";
 import { COURTS, type CourtId } from "./courts";
 import { createImpactEffects } from "./impacts";
-import { PLAYER_HOME, type Impact, type PracticePhysics } from "./physics";
+import { PLAYER_HOME, TABLE, type Impact, type PracticePhysics } from "./physics";
 import { createPost } from "./post";
 import { createRacket, createRacketModel } from "./racket";
 import { FLOOR_Y, loadScenery, type Scenery } from "./scenery";
@@ -30,6 +30,8 @@ const MIN_PIXEL_RATIO = 1;
  * frame. The margin absorbs frame-time jitter, so 60 Hz screens draw every other frame.
  */
 const TITLE_FRAME = 1 / 30 - 0.004;
+const FOCUS_END = new THREE.Vector3(0, 0, -TABLE.halfLength - 1.2);
+const FOCUS_RAMP = 4;
 /** A player hit at least this strong (0–1) gets a moment of slow motion. */
 const SLOW_MOTION_HIT = 0.85;
 const SLOW_MOTION_TIME = 0.3;
@@ -122,7 +124,9 @@ export function createCourt(host: HTMLElement) {
     lamp.target,
     table,
     player.object,
+    player.smear,
     opponent.object,
+    opponent.smear,
     ball.object,
     effects.object,
   );
@@ -172,6 +176,11 @@ export function createCourt(host: HTMLElement) {
       .sub(camera.position)
       .dot(camera.getWorldDirection(new THREE.Vector3()));
     metresPerPixel = (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / height;
+    // Focus covers everything a rally reaches, a little past the far end of the table; the court's
+    // far edge, several metres on, is soft.
+    camera.updateMatrixWorld();
+    const sharp = FOCUS_END.clone().applyMatrix4(camera.matrixWorldInverse).z;
+    post.setFocus(-sharp, -sharp + FOCUS_RAMP);
     dirty = true;
   };
   const observer = new ResizeObserver(resize);
@@ -239,7 +248,8 @@ export function createCourt(host: HTMLElement) {
   /** Draw once with hidden trails, rings, flashes, and sparks shown, so their first use never stalls. */
   const warmUp = () => {
     const hidden: THREE.Object3D[] = [];
-    for (const root of [table, player.object, opponent.object, ball.object, effects.object]) {
+    const roots = [table, player.object, player.smear, opponent.object, opponent.smear];
+    for (const root of [...roots, ball.object, effects.object]) {
       root.traverse((object) => {
         if (object.visible) return;
         hidden.push(object);

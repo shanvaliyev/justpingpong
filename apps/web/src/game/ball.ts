@@ -3,11 +3,12 @@ import * as THREE from "three";
 import { BALL_RADIUS, clamp, TABLE, type PracticePhysics } from "./physics";
 import { canvasTexture, radialTexture } from "./textures";
 
-// Streak behind fast balls: a camera-facing ribbon back along the flight, fading out. It is
-// built from the velocity rather than past frames, so slow devices draw the same length.
+// Motion blur behind fast balls: a camera-facing smear of the ball's colour back along the flight,
+// fading out. It is built from the velocity rather than past frames, so slow devices draw the
+// same length.
 const TRAIL_POINTS = 10;
-const TRAIL_TIME = 0.06;
-const TRAIL_COLOR = new THREE.Color(0xffe6bf);
+const TRAIL_TIME = 0.045;
+const TRAIL_COLOR = new THREE.Color(0xffa04a);
 
 /** Orange ball with a seam and a small print, so its spin is visible in flight. */
 function ballTexture() {
@@ -49,9 +50,8 @@ function createTrail() {
       vertexColors: true,
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
-      // Additive light does not depend on draw order, so one pass draws both faces.
+      // Flat and see-through, so one pass draws both faces.
       forceSinglePass: true,
     }),
   );
@@ -63,11 +63,16 @@ function createTrail() {
 export function createBall() {
   // The root follows the flight and stretches with speed; the mesh inside spins.
   const root = new THREE.Group();
+  // Matte celluloid: a soft, broad highlight, and sheen for the light glowing through its thin
+  // shell at the rim. A little emissive keeps it readable in shade and at dusk.
   const material = new THREE.MeshPhysicalMaterial({
     map: ballTexture(),
-    roughness: 0.42,
-    clearcoat: 0.25,
-    clearcoatRoughness: 0.4,
+    roughness: 0.48,
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.35,
+    sheen: 1,
+    sheenRoughness: 0.35,
+    sheenColor: 0xffd2a0,
     emissive: 0xff7a14,
   });
   const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS, 32, 20), material);
@@ -108,7 +113,7 @@ export function createBall() {
     /** Ambient glow for the court's light: dusk courts make the ball glow more. */
     setGlow(level: number) {
       glowLevel = level;
-      material.emissiveIntensity = 0.08 + level * 0.4;
+      material.emissiveIntensity = 0.04 + level * 0.4;
     },
     update(game: PracticePhysics, alpha: number, dt: number, eye: THREE.Vector3) {
       const { velocity } = game;
@@ -137,7 +142,7 @@ export function createBall() {
       glow.visible = visible;
       glow.position.copy(position);
       glow.scale.setScalar(0.1 + clamp(speed / 12, 0, 1) * 0.06);
-      glow.material.opacity = glowLevel + clamp((speed - 5) / 6, 0, 1) * 0.3;
+      glow.material.opacity = glowLevel * (1 + clamp((speed - 5) / 6, 0, 1));
       shadow.visible =
         visible &&
         Math.abs(position.x) < TABLE.halfWidth &&
@@ -146,7 +151,7 @@ export function createBall() {
       shadow.scale.setScalar(0.8 + position.y * 1.6);
       shadow.material.opacity = clamp(1 - position.y * 1.4, 0.15, 1);
 
-      const streak = visible ? clamp((speed - 3.5) / 6, 0, 1) * 0.6 : 0;
+      const streak = visible ? clamp((speed - 3.5) / 5, 0, 1) * 0.55 : 0;
       trail.mesh.visible = streak > 0;
       if (!trail.mesh.visible) return;
       view.subVectors(eye, position);
@@ -158,7 +163,7 @@ export function createBall() {
         const x = position.x - velocity.x * back;
         const y = position.y - velocity.y * back - 4.9 * back * back;
         const z = position.z - velocity.z * back;
-        const width = BALL_RADIUS * (0.2 + 0.8 * head);
+        const width = BALL_RADIUS * (0.5 + 0.45 * head);
         trail.positions.set([x + side.x * width, y + side.y * width, z + side.z * width], i * 6);
         trail.positions.set(
           [x - side.x * width, y - side.y * width, z - side.z * width],

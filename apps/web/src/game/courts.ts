@@ -46,8 +46,10 @@ export const COURTS: Record<CourtId, CourtConfig> = {
       exposure: 0.9,
       sky: 0xbcd6f5,
       ground: 0xb9ab9a,
-      ambient: 0.55,
-      key: { color: 0xfff1dc, intensity: 3, position: [-3.5, 6, 1.5] },
+      ambient: 0.45,
+      // A low afternoon sun from behind the left shoulder of the court: long shadows towards the
+      // camera and a sheen across the table.
+      key: { color: 0xffdfb8, intensity: 3.3, position: [-4.5, 3.4, -1.4] },
       rim: { color: 0xd0e4ff, intensity: 0.6, position: [2, 3, -5] },
       environment: 0.9,
       glow: 0.06,
