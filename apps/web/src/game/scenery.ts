@@ -4,10 +4,11 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 
 import { COURTS, type CourtId } from "./courts";
 import { canvasTexture, radialTexture, seededRandom } from "./textures";
+import { toonMaterial } from "./toon";
 
 /** The ground under the table; the table top is y = 0. */
 export const FLOOR_Y = -0.76;
-// The backdrop photo hangs far beyond the court with its horizon at eye height, so the real 3D
+// The backdrop painting hangs far beyond the court with its horizon at eye height, so the real 3D
 // floor meets it in perspective from every camera. Cameras sit within ~15 cm of EYE_HEIGHT, a
 // tenth of a degree at this distance.
 const BACKDROP_DISTANCE = 90;
@@ -17,16 +18,16 @@ const FLOOR_NEAR = 25;
 
 export type SceneryConfig = {
   /**
-   * The distant view: a photo blurred as if the lens were focused on the table. `horizon` is the
-   * horizon's height from the photo's top (0–1), `span` the horizontal angle it covers in degrees,
-   * `pan` how far right of the photo's centre the view looks (fraction of its width), and `boost`
-   * how far its brightest parts (sun, lamps, glitter) are lifted above white to bloom.
+   * The distant view: an anime background painting. `horizon` is the horizon's height from the
+   * painting's top (0–1), `span` the horizontal angle it covers in degrees, `pan` how far right of
+   * its centre the view looks (fraction of its width), and `boost` how far its brightest parts
+   * (sun, lamps, glitter) are lifted above white to bloom.
    */
   backdrop: { horizon: number; span: number; pan: number; boost: number };
-  /** Sky colours above and beside the photo. */
+  /** Sky colours above and beside the painting. */
   sky: { horizon: number; zenith: number };
-  /** Metres one floor texture covers, its colour tint, and its bump strength. */
-  floor: { tile: number; tint: number; bumps: number };
+  /** Metres one floor texture covers, and its colour tint. */
+  floor: { tile: number; tint: number };
   /** What closes the court off from the view, this many metres beyond the net. */
   edge: { kind: "wall" | "rail" | "parapet"; distance: number };
   particles: { kind: "petals" | "motes"; color: number; count: number };
@@ -36,8 +37,6 @@ export type SceneryConfig = {
 export const courtImages = (id: CourtId) => ({
   backdrop: `/game/courts/${id}-backdrop.webp`,
   floor: `/game/courts/${id}-floor.webp`,
-  normal: `/game/courts/${id}-floor-normal.webp`,
-  rough: `/game/courts/${id}-floor-rough.webp`,
 });
 
 /** Decode an image off the main thread; same-origin, so it shares the page's preload. */
@@ -52,60 +51,11 @@ async function loadTexture(src: string, colour: boolean) {
   return texture;
 }
 
-type FloorMaps = { map: THREE.Texture; normalMap: THREE.Texture; roughnessMap: THREE.Texture };
-
-/** The floor maps again, repeated `x` by `y` times; clones share the uploaded images. */
-function repeated(maps: FloorMaps, x: number, y: number): FloorMaps {
-  const copy = (texture: THREE.Texture) => {
-    const clone = texture.clone();
-    clone.repeat.set(x, y);
-    return clone;
-  };
-  return {
-    map: copy(maps.map),
-    normalMap: copy(maps.normalMap),
-    roughnessMap: copy(maps.roughnessMap),
-  };
-}
-
-/** A textured stone, wood, or concrete surface whose tonal drift hides the texture's repeat. */
-function surfaceMaterial(maps: FloorMaps, tint: number, bumps: number) {
-  const material = new THREE.MeshStandardMaterial({
-    ...maps,
-    color: tint,
-    normalScale: new THREE.Vector2(bumps, bumps),
-  });
-  material.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "void main() {",
-        /* glsl */ `
-        float macroHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float macroNoise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          return mix(
-            mix(macroHash(i), macroHash(i + vec2(1.0, 0.0)), f.x),
-            mix(macroHash(i + vec2(0.0, 1.0)), macroHash(i + vec2(1.0, 1.0)), f.x),
-            f.y
-          );
-        }
-        void main() {`,
-      )
-      .replace(
-        "#include <map_fragment>",
-        /* glsl */ `#include <map_fragment>
-        float macro = macroNoise(vMapUv * 0.37) * 0.65 + macroNoise(vMapUv * 1.1 + 7.1) * 0.35;
-        diffuseColor.rgb *= mix(0.82, 1.12, macro);`,
-      )
-      .replace(
-        "#include <roughnessmap_fragment>",
-        /* glsl */ `#include <roughnessmap_fragment>
-        roughnessFactor = clamp(roughnessFactor * mix(0.85, 1.15, macro), 0.04, 1.0);`,
-      );
-  };
-  return material;
+/** The floor texture again, repeated `x` by `y` times; clones share the uploaded image. */
+function repeated(map: THREE.Texture, x: number, y: number) {
+  const clone = map.clone();
+  clone.repeat.set(x, y);
+  return clone;
 }
 
 function skyMaterial(sky: SceneryConfig["sky"]) {
@@ -148,7 +98,7 @@ function backdropMaterial(map: THREE.Texture, boost: number) {
       varying vec2 vUv;
       void main() {
         vec3 colour = texture2D(map, vUv).rgb;
-        // The photo stops at white; lift its brightest parts past it so they bloom like real light.
+        // The painting stops at white; lift its brightest parts past it so they bloom like light.
         float light = dot(colour, vec3(0.2126, 0.7152, 0.0722));
         colour *= 1.0 + boost * pow(smoothstep(0.55, 1.0, light), 3.0);
         gl_FragColor = vec4(colour, 1.0);
@@ -158,7 +108,7 @@ function backdropMaterial(map: THREE.Texture, boost: number) {
 }
 
 /**
- * The photo on a far plane whose horizon row sits at eye height. Beyond the photo's sides the
+ * The painting on a far plane whose horizon row sits at eye height. Beyond the photo's sides the
  * plane mirrors it, and above it the top row stretches into the sky, for very wide screens.
  */
 function createBackdrop(map: THREE.Texture, config: SceneryConfig["backdrop"]) {
@@ -185,7 +135,7 @@ function createBackdrop(map: THREE.Texture, config: SceneryConfig["backdrop"]) {
 }
 
 /** A railing or wall along the far end of the floor. Everything casts and takes shadows. */
-function createEdge(maps: FloorMaps, { edge, floor }: SceneryConfig) {
+function createEdge(map: THREE.Texture, { edge, floor }: SceneryConfig) {
   const group = new THREE.Group();
   const z = -edge.distance;
   const add = (
@@ -222,13 +172,12 @@ function createEdge(maps: FloorMaps, { edge, floor }: SceneryConfig) {
     ]);
     mesh.rotation.z = Math.PI / 2;
   };
-  /** The floor's textures on a strip as long as the floor and `height` tall, tinted by `shade`. */
+  /** The floor's texture on a strip as long as the floor and `height` tall, tinted by `shade`. */
   const surface = (height: number, shade = 1) =>
-    surfaceMaterial(
-      repeated(maps, FLOOR_WIDTH / floor.tile, height / floor.tile),
-      new THREE.Color(floor.tint).multiplyScalar(shade).getHex(),
-      floor.bumps,
-    );
+    toonMaterial({
+      map: repeated(map, FLOOR_WIDTH / floor.tile, height / floor.tile),
+      color: new THREE.Color(floor.tint).multiplyScalar(shade),
+    });
 
   if (edge.kind === "wall") {
     // A low dressed-stone wall with a darker capstone.
@@ -245,11 +194,7 @@ function createEdge(maps: FloorMaps, { edge, floor }: SceneryConfig) {
     ]);
   } else if (edge.kind === "rail") {
     // A white seafront railing: square posts and round rails, open to the sea below.
-    const paint = new THREE.MeshStandardMaterial({
-      color: 0xf1eee6,
-      roughness: 0.42,
-      metalness: 0.15,
-    });
+    const paint = toonMaterial({ color: 0xf6f3ec });
     posts(new RoundedBoxGeometry(0.07, 1.04, 0.07, 2, 0.015), paint, 1.6, FLOOR_Y + 0.52);
     rail(0.036, 1.04, paint);
     rail(0.014, 0.72, paint);
@@ -262,21 +207,15 @@ function createEdge(maps: FloorMaps, { edge, floor }: SceneryConfig) {
       FLOOR_Y + height / 2,
       z - 0.15,
     ]);
-    const steel = new THREE.MeshStandardMaterial({
-      color: 0x3a3f48,
-      roughness: 0.3,
-      metalness: 0.85,
-    });
+    const steel = toonMaterial({ color: 0x4a5266 });
     posts(new THREE.BoxGeometry(0.035, 0.66, 0.035), steel, 1.5, FLOOR_Y + height + 0.33);
     rail(0.03, height + 0.66, steel);
     const glass = new THREE.Mesh(
       new THREE.PlaneGeometry(FLOOR_WIDTH, 0.62),
-      new THREE.MeshPhysicalMaterial({
-        color: 0xa8c4d8,
-        roughness: 0.04,
+      new THREE.MeshBasicMaterial({
+        color: 0x9fc3ff,
         transparent: true,
-        opacity: 0.16,
-        envMapIntensity: 1.6,
+        opacity: 0.18,
         depthWrite: false,
       }),
     );
@@ -299,7 +238,7 @@ function createPetals(count: number, colour: number) {
   const map = canvasTexture(64, 64, (ctx) => {
     const gradient = ctx.createLinearGradient(0, 64, 0, 0);
     gradient.addColorStop(0, "#ffffff");
-    gradient.addColorStop(1, "#ffd6e2");
+    gradient.addColorStop(1, "#ffc2d6");
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.moveTo(32, 62);
@@ -309,14 +248,14 @@ function createPetals(count: number, colour: number) {
     ctx.bezierCurveTo(56, 6, 62, 40, 32, 62);
     ctx.fill();
   });
-  const material = new THREE.MeshStandardMaterial({
+  // Flat colour, unlit, as petals are painted in anime. They leave the depth buffer alone, so
+  // the ink pass does not outline them into dark specks at a distance.
+  const material = new THREE.MeshBasicMaterial({
     map,
     color: colour,
-    emissive: colour,
-    emissiveIntensity: 0.25,
-    roughness: 0.7,
     alphaTest: 0.5,
     side: THREE.DoubleSide,
+    depthWrite: false,
   });
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.024, 0.024), material, count);
   mesh.frustumCulled = false;
@@ -414,26 +353,15 @@ function createMotes(count: number, colour: number) {
 
 export type Scenery = Awaited<ReturnType<typeof loadScenery>>;
 
-/**
- * Everything around the table for one court: sky, backdrop, floor, edge, and particles, plus the
- * reflections they cast, built from the same sky, photo, and ground.
- */
-export async function loadScenery(
-  id: CourtId,
-  renderer: THREE.WebGLRenderer,
-  pmrem: THREE.PMREMGenerator,
-) {
-  const { scenery: config, lighting } = COURTS[id];
+/** Everything around the table for one court: sky, backdrop, floor, edge, and particles. */
+export async function loadScenery(id: CourtId, renderer: THREE.WebGLRenderer) {
+  const { scenery: config } = COURTS[id];
   const images = courtImages(id);
-  const [backdropMap, map, normalMap, roughnessMap] = await Promise.all([
+  const [backdropMap, floorMap] = await Promise.all([
     loadTexture(images.backdrop, true),
     loadTexture(images.floor, true),
-    loadTexture(images.normal, false),
-    loadTexture(images.rough, false),
   ]);
-  const anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
-  for (const texture of [map, normalMap, roughnessMap]) texture.anisotropy = anisotropy;
-  const maps = { map, normalMap, roughnessMap };
+  floorMap.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
 
   const object = new THREE.Group();
   const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), skyMaterial(config.sky));
@@ -443,11 +371,10 @@ export async function loadScenery(
   const length = config.edge.distance + FLOOR_NEAR;
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(FLOOR_WIDTH, length),
-    surfaceMaterial(
-      repeated(maps, FLOOR_WIDTH / config.floor.tile, length / config.floor.tile),
-      config.floor.tint,
-      config.floor.bumps,
-    ),
+    toonMaterial({
+      map: repeated(floorMap, FLOOR_WIDTH / config.floor.tile, length / config.floor.tile),
+      color: config.floor.tint,
+    }),
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, FLOOR_Y, (FLOOR_NEAR - config.edge.distance) / 2);
@@ -457,35 +384,15 @@ export async function loadScenery(
     config.particles.kind === "petals"
       ? createPetals(config.particles.count, config.particles.color)
       : createMotes(config.particles.count, config.particles.color);
-  object.add(sky, backdrop, floor, createEdge(maps, config), particles.object);
-  // Upload the photos now, once their sampling is final, rather than in the first frame that
-  // shows this court. The wall's copies of the floor maps reuse these uploads.
-  const { map: floorMap, normalMap: floorNormal, roughnessMap: floorRough } = floor.material;
-  for (const texture of [backdropMap, floorMap!, floorNormal!, floorRough!]) {
-    renderer.initTexture(texture);
-  }
-
-  // Reflections and ambient light come from the same sky and photo, over the ground's colour.
-  const reflected = new THREE.Scene();
-  const groundDisc = new THREE.Mesh(
-    new THREE.CircleGeometry(60, 32),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(lighting.ground).multiplyScalar(0.5) }),
-  );
-  groundDisc.rotation.x = -Math.PI / 2;
-  groundDisc.position.y = FLOOR_Y;
-  reflected.add(sky.clone(), backdrop.clone(), groundDisc);
-  const environment = pmrem.fromScene(reflected, 0.02, 0.1, 400, {
-    position: new THREE.Vector3(0, 0.3, 0),
-  }).texture;
-  groundDisc.geometry.dispose();
-  groundDisc.material.dispose();
+  object.add(sky, backdrop, floor, createEdge(floorMap, config), particles.object);
+  // Upload the images now, once their sampling is final, rather than in the first frame that
+  // shows this court. The wall's copies of the floor texture reuse its upload.
+  for (const texture of [backdropMap, floor.material.map!]) renderer.initTexture(texture);
 
   return {
     object,
-    environment,
     update: particles.update,
     dispose() {
-      environment.dispose();
       backdropMap.dispose();
     },
   };

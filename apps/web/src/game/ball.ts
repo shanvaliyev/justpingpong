@@ -2,22 +2,23 @@ import * as THREE from "three";
 
 import { BALL_RADIUS, clamp, TABLE, type PracticePhysics } from "./physics";
 import { canvasTexture, radialTexture } from "./textures";
+import { toonMaterial } from "./toon";
 
-// Motion blur behind fast balls: a camera-facing smear of the ball's colour back along the flight,
-// fading out. It is built from the velocity rather than past frames, so slow devices draw the
+// Speed streak behind fast balls, as an animator draws it: a camera-facing smear of the ball's
+// colour back along the flight, fading out. It is built from the velocity rather than past frames, so slow devices draw the
 // same length.
 const TRAIL_POINTS = 10;
 const TRAIL_TIME = 0.045;
-const TRAIL_COLOR = new THREE.Color(0xffa04a);
+const TRAIL_COLOR = new THREE.Color(0xffc070);
 
 /** Orange ball with a seam and a small print, so its spin is visible in flight. */
 function ballTexture() {
   return canvasTexture(256, 128, (ctx) => {
-    ctx.fillStyle = "#ff9126";
+    ctx.fillStyle = "#ff8a1c";
     ctx.fillRect(0, 0, 256, 128);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
-    ctx.fillRect(0, 62, 256, 4);
-    ctx.fillStyle = "#b44a07";
+    ctx.fillStyle = "#ffd08a";
+    ctx.fillRect(0, 61, 256, 6);
+    ctx.fillStyle = "#a33a05";
     ctx.font = "700 15px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("★★★", 64, 44);
@@ -63,18 +64,8 @@ function createTrail() {
 export function createBall() {
   // The root follows the flight and stretches with speed; the mesh inside spins.
   const root = new THREE.Group();
-  // Matte celluloid: a soft, broad highlight, and sheen for the light glowing through its thin
-  // shell at the rim. A little emissive keeps it readable in shade and at dusk.
-  const material = new THREE.MeshPhysicalMaterial({
-    map: ballTexture(),
-    roughness: 0.48,
-    clearcoat: 0.3,
-    clearcoatRoughness: 0.35,
-    sheen: 1,
-    sheenRoughness: 0.35,
-    sheenColor: 0xffd2a0,
-    emissive: 0xff7a14,
-  });
+  // A little emissive keeps it readable in shade and at dusk.
+  const material = toonMaterial({ map: ballTexture(), emissive: 0xff7a14 });
   const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS, 32, 20), material);
   ball.castShadow = true;
   root.add(ball);
@@ -89,7 +80,7 @@ export function createBall() {
   const shadow = new THREE.Mesh(
     new THREE.PlaneGeometry(0.12, 0.12),
     new THREE.MeshBasicMaterial({
-      map: radialTexture("rgba(8,16,30,0.55)", "rgba(8,16,30,0)"),
+      map: radialTexture("rgba(14,18,52,0.6)", "rgba(14,18,52,0)", 0.55),
       transparent: true,
       depthWrite: false,
     }),
@@ -151,7 +142,7 @@ export function createBall() {
       shadow.scale.setScalar(0.8 + position.y * 1.6);
       shadow.material.opacity = clamp(1 - position.y * 1.4, 0.15, 1);
 
-      const streak = visible ? clamp((speed - 3.5) / 5, 0, 1) * 0.55 : 0;
+      const streak = visible ? clamp((speed - 3.5) / 5, 0, 1) * 0.8 : 0;
       trail.mesh.visible = streak > 0;
       if (!trail.mesh.visible) return;
       view.subVectors(eye, position);

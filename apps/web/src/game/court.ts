@@ -1,11 +1,9 @@
 import * as THREE from "three";
 
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-
 import { createBall } from "./ball";
 import { COURTS, type CourtId } from "./courts";
 import { createImpactEffects } from "./impacts";
-import { PLAYER_HOME, TABLE, type Impact, type PracticePhysics } from "./physics";
+import { PLAYER_HOME, type Impact, type PracticePhysics } from "./physics";
 import { createPost } from "./post";
 import { createRacket, createRacketModel } from "./racket";
 import { FLOOR_Y, loadScenery, type Scenery } from "./scenery";
@@ -30,8 +28,6 @@ const MIN_PIXEL_RATIO = 1;
  * frame. The margin absorbs frame-time jitter, so 60 Hz screens draw every other frame.
  */
 const TITLE_FRAME = 1 / 30 - 0.004;
-const FOCUS_END = new THREE.Vector3(0, 0, -TABLE.halfLength - 1.2);
-const FOCUS_RAMP = 4;
 /** A player hit at least this strong (0–1) gets a moment of slow motion. */
 const SLOW_MOTION_HIT = 0.85;
 const SLOW_MOTION_TIME = 0.3;
@@ -95,20 +91,19 @@ export function createCourt(host: HTMLElement) {
     far: 40,
   });
   key.shadow.normalBias = 0.02;
-  key.shadow.radius = 4;
+  // Crisp shadow edges, as cel animation paints them.
+  key.shadow.radius = 1.5;
   const rim = new THREE.DirectionalLight();
   // Present on every court so changing courts never changes the shaders; off unless a court has one.
   const lamp = new THREE.SpotLight(0xffffff, 0, 0, 0.7, 0.75, 2);
   lamp.castShadow = true;
   lamp.shadow.mapSize.set(1024, 1024);
   lamp.shadow.normalBias = 0.02;
-  lamp.shadow.radius = 4;
+  lamp.shadow.radius = 1.5;
   lamp.target.position.set(0, FLOOR_Y, -0.2);
 
-  const pmrem = new THREE.PMREMGenerator(renderer);
   const sceneries = new Map<CourtId, Promise<Scenery>>();
   let shown: Scenery | undefined;
-  let studio: THREE.Texture | undefined;
 
   const table = createTable();
   const racket = createRacketModel();
@@ -176,11 +171,6 @@ export function createCourt(host: HTMLElement) {
       .sub(camera.position)
       .dot(camera.getWorldDirection(new THREE.Vector3()));
     metresPerPixel = (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / height;
-    // Focus covers everything a rally reaches, a little past the far end of the table; the court's
-    // far edge, several metres on, is soft.
-    camera.updateMatrixWorld();
-    const sharp = FOCUS_END.clone().applyMatrix4(camera.matrixWorldInverse).z;
-    post.setFocus(-sharp, -sharp + FOCUS_RAMP);
     dirty = true;
   };
   const observer = new ResizeObserver(resize);
@@ -201,12 +191,10 @@ export function createCourt(host: HTMLElement) {
   const loadCourt = (id: CourtId) => {
     let loading = sceneries.get(id);
     if (!loading) {
-      loading = loadScenery(id, renderer, pmrem).then(async (built) => {
+      loading = loadScenery(id, renderer).then(async (built) => {
         built.object.visible = false;
         scene.add(built.object);
-        // The first court compiles with everything else below; reflections are part of every
-        // lit shader, so the first ones must exist before it does.
-        scene.environment ??= built.environment;
+        // The first court compiles with everything else below.
         if (compiled) await post.compile(built.object, scene);
         return built;
       });
@@ -240,7 +228,6 @@ export function createCourt(host: HTMLElement) {
     const fog = scene.fog as THREE.FogExp2;
     fog.color.set(haze.color);
     fog.density = haze.density;
-    scene.environmentIntensity = lighting.environment;
     ball.setGlow(lighting.glow);
     post.setGrade(grade);
   };
@@ -263,10 +250,7 @@ export function createCourt(host: HTMLElement) {
   const show = (id: CourtId, next: Scenery | undefined) => {
     if (shown) shown.object.visible = false;
     shown = next;
-    if (next) {
-      next.object.visible = true;
-      scene.environment = next.environment;
-    }
+    if (next) next.object.visible = true;
     applyLighting(id);
     dirty = true;
     if (compiled) return;
@@ -291,10 +275,8 @@ export function createCourt(host: HTMLElement) {
         },
         () => {
           sceneries.delete(id);
-          // Keep the current court; with none yet, play over a neutral studio.
+          // Keep the current court; with none yet, play over the plain sky colour.
           if (request !== courtRequest || disposed || compiled) return;
-          studio = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-          scene.environment = studio;
           show(id, undefined);
         },
       );
@@ -394,8 +376,6 @@ export function createCourt(host: HTMLElement) {
       disposed = true;
       observer.disconnect();
       for (const loading of sceneries.values()) void loading.then((built) => built.dispose());
-      studio?.dispose();
-      pmrem.dispose();
       disposeTree(scene);
       post.dispose();
       renderer.dispose();

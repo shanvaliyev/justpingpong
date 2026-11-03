@@ -1,7 +1,8 @@
 import * as THREE from "three";
 
 import { clamp, type Vec3 } from "./physics";
-import { canvasTexture, grainNormalTexture, seededRandom } from "./textures";
+import { canvasTexture } from "./textures";
+import { toonMaterial } from "./toon";
 
 // Real shakehand racket proportions in metres (ITTF-sized blade, flared handle), drawn a little
 // larger than life so it still reads at game distance. The physics contact circle stays separate.
@@ -15,6 +16,9 @@ const SUBSTEP = 1 / 240;
 const SMEAR_SAMPLES = 8;
 const SMEAR_TIME = 0.075;
 const SMEAR_SPEED = { from: 1.2, full: 4 };
+// Rubber colours, punchier than real sheets.
+const RED = "#e8233f";
+const BLACK = "#2e3142";
 
 class Spring {
   value = 0;
@@ -42,7 +46,6 @@ function layerTexture(layers: Layer[], top: number, thickness: number) {
   const height = 128;
   const total = layers.reduce((sum, [, share]) => sum + share, 0);
   const texture = canvasTexture(4, height, (ctx) => {
-    const rand = seededRandom(height + layers.length);
     // Canvas rows run down while v runs up: the outermost layer is the bottom row.
     let y = height;
     for (const [colour, share] of layers) {
@@ -50,11 +53,6 @@ function layerTexture(layers: Layer[], top: number, thickness: number) {
       ctx.fillStyle = colour;
       ctx.fillRect(0, y - rows, 4, rows);
       y -= rows;
-    }
-    // Faint grain running along each layer.
-    for (let row = 0; row < height; row++) {
-      ctx.fillStyle = `rgba(${rand() < 0.5 ? "0,0,0" : "255,255,255"},${rand() * 0.06})`;
-      ctx.fillRect(0, row, 4, 1);
     }
   });
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
@@ -71,79 +69,35 @@ function onBlade(texture: THREE.Texture) {
   return texture;
 }
 
-/** A rubber's face: pored colour, a dusty sweet spot where balls land, and a foil print. */
-function rubberTexture(colour: string, speckle: string, dust: string) {
+/** A rubber's face: flat colour with the maker's print above the handle. */
+function rubberTexture(colour: string) {
   return onBlade(
     canvasTexture(512, 512, (ctx) => {
-      const rand = seededRandom(colour.length * 7919 + colour.charCodeAt(1));
       ctx.fillStyle = colour;
       ctx.fillRect(0, 0, 512, 512);
-      ctx.fillStyle = speckle;
-      for (let i = 0; i < 12000; i++) ctx.fillRect(rand() * 512, rand() * 512, 1.5, 1.5);
-      // Balls and dust dull the middle of the face, a little above centre.
-      const spot = ctx.createRadialGradient(256, 236, 0, 256, 236, 170);
-      spot.addColorStop(0, dust);
-      spot.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = spot;
-      ctx.fillRect(0, 0, 512, 512);
-      // The maker's foil print above the handle, like a real rubber sheet.
-      ctx.fillStyle = "rgba(226, 192, 120, 0.92)";
+      ctx.fillStyle = "#ffd36b";
       ctx.textAlign = "center";
-      ctx.font = "800 italic 26px system-ui, sans-serif";
-      ctx.fillText("JPP", 256, 352);
-      ctx.font = "600 13px system-ui, sans-serif";
-      ctx.letterSpacing = "4px";
-      ctx.fillText("TENSOR · 40+", 256, 372);
-      ctx.fillRect(214, 380, 84, 1.5);
+      ctx.font = "900 italic 30px system-ui, sans-serif";
+      ctx.fillText("JPP", 256, 356);
+      ctx.fillRect(220, 368, 72, 4);
     }),
   );
-}
-
-/** Where the rubber's tacky gloss has dulled; the green channel is the roughness. */
-function rubberRoughness() {
-  const texture = onBlade(
-    canvasTexture(128, 128, (ctx) => {
-      ctx.fillStyle = "rgb(105,105,105)";
-      ctx.fillRect(0, 0, 128, 128);
-      const spot = ctx.createRadialGradient(64, 59, 0, 64, 59, 44);
-      spot.addColorStop(0, "rgba(175,175,175,0.9)");
-      spot.addColorStop(1, "rgba(175,175,175,0)");
-      ctx.fillStyle = spot;
-      ctx.fillRect(0, 0, 128, 128);
-      const rand = seededRandom(271);
-      for (let i = 0; i < 24; i++) {
-        const x = 20 + rand() * 88;
-        const y = 20 + rand() * 88;
-        const radius = 3 + rand() * 9;
-        const smudge = ctx.createRadialGradient(x, y, 0, x, y, radius);
-        smudge.addColorStop(0, "rgba(60,60,60,0.5)");
-        smudge.addColorStop(1, "rgba(60,60,60,0)");
-        ctx.fillStyle = smudge;
-        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
-      }
-    }),
-  );
-  texture.colorSpace = THREE.NoColorSpace;
-  return texture;
 }
 
 /**
- * The handle's faces: strips of pale ash and dark walnut laminated along its length, with a
+ * The handle's faces: flat strips of pale and dark wood laminated along its length, with a
  * maker's badge on the flare below the blade.
  */
 function handleTexture() {
   const width = 256;
   const height = 864;
   const texture = canvasTexture(width, height, (ctx) => {
-    const rand = seededRandom(42);
     const metre = width / 0.04;
     // Strips from the centre line outwards, mirrored on both sides.
     const strips: [string, number][] = [
-      ["#c99a62", 0.0042],
-      ["#2e1a0e", 0.0007],
-      ["#5a3519", 0.0034],
-      ["#dcbb88", 0.0006],
-      ["#b98650", 0.02],
+      ["#e2a964", 0.0042],
+      ["#5a2d18", 0.004],
+      ["#f4d39a", 0.02],
     ];
     for (const side of [-1, 1]) {
       let x = 0;
@@ -155,28 +109,14 @@ function handleTexture() {
         x += size;
       }
     }
-    // Grain runs along the handle; keep it soft because the extruded sides stretch it.
-    for (let i = 0; i < 120; i++) {
-      ctx.strokeStyle = `rgba(70, 36, 12, ${0.08 + rand() * 0.16})`;
-      ctx.lineWidth = 0.5 + rand() * 1.6;
-      const x = rand() * width;
-      const wave = 0.5 + rand() * 2;
-      ctx.beginPath();
-      for (let y = 0; y <= height; y += 16) ctx.lineTo(x + Math.sin(y / 90 + i) * wave, y);
-      ctx.stroke();
-    }
-    // The badge: a brushed-gold oval with the maker's mark.
+    // The badge: a gold oval with the maker's mark, inked like the rest of the frame.
     const badgeY = height * (1 - (0.175 - 0.098) / 0.135);
-    const badge = ctx.createLinearGradient(0, badgeY - 40, 0, badgeY + 40);
-    badge.addColorStop(0, "#f6e2a6");
-    badge.addColorStop(0.5, "#b88a3e");
-    badge.addColorStop(1, "#e8cd88");
-    ctx.fillStyle = badge;
+    ctx.fillStyle = "#f2c64e";
     ctx.beginPath();
     ctx.ellipse(width / 2, badgeY, 0.0085 * metre, 0.0125 * metre, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(70, 40, 10, 0.6)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#2a1530";
+    ctx.lineWidth = 6;
     ctx.stroke();
     ctx.fillStyle = "#9b1420";
     ctx.font = "900 italic 46px system-ui, sans-serif";
@@ -242,33 +182,6 @@ function handleGeometry() {
  * textures.
  */
 export function createRacketModel() {
-  // Tacky rubber: fine pores break up its gloss, wear dulls the sweet spot, and sheen lights its
-  // rim at grazing angles.
-  const pores = grainNormalTexture(64, 6, 31);
-  pores.repeat.set(1 / 0.012, 1 / 0.012);
-  const roughnessMap = rubberRoughness();
-  const rubber = (map: THREE.Texture, sheenColor: number) =>
-    new THREE.MeshPhysicalMaterial({
-      map,
-      roughnessMap,
-      roughness: 1,
-      normalMap: pores,
-      normalScale: new THREE.Vector2(0.06, 0.06),
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.42,
-      sheen: 0.8,
-      sheenRoughness: 0.45,
-      sheenColor,
-      envMapIntensity: 0.6,
-    });
-  const lacquered = (map: THREE.Texture) =>
-    new THREE.MeshPhysicalMaterial({
-      map,
-      roughness: 0.45,
-      clearcoat: 0.7,
-      clearcoatRoughness: 0.25,
-      envMapIntensity: 0.7,
-    });
   const shadowed = (mesh: THREE.Mesh) => {
     mesh.castShadow = true;
     return mesh;
@@ -284,33 +197,21 @@ export function createRacketModel() {
   });
   wood.translate(0, 0, -BLADE.wood / 2);
   // Extrusion groups: 0 is the (hidden) faces under the rubber, 1 is the edge, where the plies
-  // show: limba faces over thin carbon, around a thick ayous core.
-  const glue = "#5a3b20";
+  // show as pale wood with a dark carbon line under each face.
   const plies = layerTexture(
     [
-      ["#cfa772", 0.13],
-      [glue, 0.02],
-      ["#1d1c1c", 0.06],
-      [glue, 0.02],
-      ["#e4c89a", 0.16],
-      [glue, 0.02],
-      ["#d6af7a", 0.18],
-      [glue, 0.02],
-      ["#e4c89a", 0.16],
-      [glue, 0.02],
-      ["#1d1c1c", 0.06],
-      [glue, 0.02],
-      ["#cfa772", 0.13],
+      ["#eec48a", 0.2],
+      ["#2b2230", 0.1],
+      ["#f7dca8", 0.4],
+      ["#2b2230", 0.1],
+      ["#eec48a", 0.2],
     ],
     BLADE.wood,
     BLADE.wood,
   );
   model.add(
     shadowed(
-      new THREE.Mesh(wood, [
-        new THREE.MeshStandardMaterial({ color: 0xe8cc98, roughness: 0.6 }),
-        new THREE.MeshStandardMaterial({ map: plies, roughness: 0.7 }),
-      ]),
+      new THREE.Mesh(wood, [toonMaterial({ color: 0xf2d29c }), toonMaterial({ map: plies })]),
     ),
   );
   const sheetDepth = BLADE.rubber - 0.0008;
@@ -323,33 +224,25 @@ export function createRacketModel() {
     curveSegments: 40,
   });
   sheet.translate(0, 0, 0.0004);
+  // The faces glow a little in their own colour, as anime keeps a hero prop readable even with
+  // the light behind it.
+  const rubber = (colour: string) =>
+    toonMaterial({ map: rubberTexture(colour), emissive: colour, emissiveIntensity: 0.3 });
   // On the sheet's edge, the topsheet sits over a thick orange sponge.
   const edge = (topsheet: string) =>
-    new THREE.MeshStandardMaterial({
+    toonMaterial({
       map: layerTexture(
         [
           [topsheet, 0.3],
-          ["#e9a640", 0.7],
+          ["#ffb13d", 0.7],
         ],
         sheetDepth + 0.0004,
         BLADE.rubber,
       ),
-      roughness: 0.8,
     });
   for (const [face, side, direction] of [
-    [
-      rubber(rubberTexture("#a3101f", "rgba(0, 0, 0, 0.14)", "rgba(255,190,190,0.1)"), 0xffb3b8),
-      edge("#a3101f"),
-      1,
-    ],
-    [
-      rubber(
-        rubberTexture("#25262b", "rgba(255, 255, 255, 0.05)", "rgba(200,205,215,0.12)"),
-        0xb4bccc,
-      ),
-      edge("#25262b"),
-      -1,
-    ],
+    [rubber(RED), edge(RED), 1],
+    [rubber(BLACK), edge(BLACK), -1],
   ] as const) {
     const mesh = shadowed(new THREE.Mesh(sheet, [face, side]));
     // Turning the back sheet around keeps its print readable from that side.
@@ -362,21 +255,22 @@ export function createRacketModel() {
   const handleDepth = HANDLE.thickness - 2 * HANDLE.bevel;
   const handleSide = layerTexture(
     [
-      ["#b98650", 0.36],
-      ["#2e1a0e", 0.04],
-      ["#e4c89a", 0.08],
-      ["#1d1c1c", 0.04],
-      ["#d6af7a", 0.12],
-      ["#1d1c1c", 0.04],
-      ["#e4c89a", 0.08],
-      ["#2e1a0e", 0.04],
-      ["#b98650", 0.36],
+      ["#f4d39a", 0.4],
+      ["#2b2230", 0.04],
+      ["#f7dca8", 0.12],
+      ["#2b2230", 0.04],
+      ["#f4d39a", 0.4],
     ],
     handleDepth + HANDLE.bevel,
     HANDLE.thickness,
   );
   model.add(
-    shadowed(new THREE.Mesh(handleGeometry(), [lacquered(handleTexture()), lacquered(handleSide)])),
+    shadowed(
+      new THREE.Mesh(handleGeometry(), [
+        toonMaterial({ map: handleTexture() }),
+        toonMaterial({ map: handleSide }),
+      ]),
+    ),
   );
   return model;
 }

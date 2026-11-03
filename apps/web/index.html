@@ -12,7 +12,7 @@
         const courts = ["sakura", "seaside", "tokyo"];
         const court = courts[Math.floor(Math.random() * courts.length)];
         document.documentElement.dataset.court = court;
-        for (const image of ["backdrop", "floor", "floor-normal", "floor-rough"]) {
+        for (const image of ["backdrop", "floor"]) {
           const preload = document.createElement("link");
           preload.rel = "preload";
           preload.as = "image";
