@@ -28,9 +28,13 @@ const MIN_PIXEL_RATIO = 1;
  * frame. The margin absorbs frame-time jitter, so 60 Hz screens draw every other frame.
  */
 const TITLE_FRAME = 1 / 30 - 0.004;
-/** A player hit at least this strong (0–1) gets a moment of slow motion. */
+/** A player hit at least this strong (0–1) gets a moment of slow motion and an impact frame. */
 const SLOW_MOTION_HIT = 0.85;
 const SLOW_MOTION_TIME = 0.3;
+const IMPACT_FRAME_TIME = 0.07;
+/** A player hit at least this strong (0–1) draws focus lines towards it. */
+const FOCUS_LINES_HIT = 0.6;
+const FOCUS_LINES_TIME = 0.45;
 
 /** Free GPU resources of every mesh, sprite, and point cloud, including material textures. */
 function disposeTree(root: THREE.Object3D) {
@@ -130,6 +134,10 @@ export function createCourt(host: HTMLElement) {
   let hitStop = 0;
   let slowMotion = 0;
   let zoom = 0;
+  let focusLines = 0;
+  let impactFrame = 0;
+  const focusPoint = new THREE.Vector2(0.5, 0.5);
+  const projected = new THREE.Vector3();
   let clock = 0;
   let ambientClock = 0;
   const follow = { yaw: 0, pitch: 0 };
@@ -331,6 +339,8 @@ export function createCourt(host: HTMLElement) {
       if (!playing) alpha = 1;
       hitStop = Math.max(0, hitStop - dt);
       slowMotion = Math.max(0, slowMotion - dt);
+      focusLines = Math.max(0, focusLines - dt);
+      impactFrame = Math.max(0, impactFrame - dt);
       clock += dt;
       ambientClock += ambientDt;
       for (const impact of impacts) {
@@ -340,7 +350,15 @@ export function createCourt(host: HTMLElement) {
           shake = Math.min(1, shake + strength * strength * 0.9);
           zoom = Math.min(3, zoom + strength * strength * 2.5);
           if (strength > 0.6) hitStop = 0.05 + (strength - 0.6) * 0.06;
-          if (strength >= SLOW_MOTION_HIT) slowMotion = SLOW_MOTION_TIME;
+          if (strength >= SLOW_MOTION_HIT) {
+            slowMotion = SLOW_MOTION_TIME;
+            impactFrame = IMPACT_FRAME_TIME;
+          }
+          if (strength >= FOCUS_LINES_HIT) {
+            focusLines = FOCUS_LINES_TIME;
+            projected.copy(impact.position).project(camera);
+            focusPoint.set(projected.x * 0.5 + 0.5, projected.y * 0.5 + 0.5);
+          }
         }
         if (impact.surface === "opponent") opponent.hit(strength);
         effects.add(impact, strength, camera.quaternion);
@@ -370,6 +388,7 @@ export function createCourt(host: HTMLElement) {
       camera.rotateZ(Math.sin(clock * 53 + 2.1) * amount * 0.6);
       camera.fov = aimCamera.fov - zoom;
       camera.updateProjectionMatrix();
+      post.setDrama(focusPoint, focusLines / FOCUS_LINES_TIME, impactFrame > 0 ? 1 : 0);
       post.render(elapsed);
     },
     dispose() {

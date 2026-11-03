@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 import type { Impact } from "./physics";
-import { radialTexture } from "./textures";
+import { canvasTexture, seededRandom } from "./textures";
 
 const PULSES = 4;
 const SPARKS = 96;
@@ -11,14 +11,41 @@ const SPARK_STREAK = 0.022;
 const SPARK_COLOUR = new THREE.Color(0xffd9a0).multiplyScalar(3);
 const FLASH_TIME = 0.09;
 
+/** A jagged starburst with an inked edge: the contact flash an animator draws on a hit. */
+function burstTexture() {
+  return canvasTexture(256, 256, (ctx) => {
+    const rand = seededRandom(1701);
+    const star = (outer: number, inner: number) => {
+      const points = 28;
+      ctx.beginPath();
+      for (let i = 0; i < points; i++) {
+        const angle = (i / points) * Math.PI * 2;
+        const radius = i % 2 === 0 ? outer * (0.6 + rand() * 0.4) : inner;
+        ctx.lineTo(128 + Math.cos(angle) * radius, 128 + Math.sin(angle) * radius);
+      }
+      ctx.closePath();
+    };
+    star(120, 48);
+    ctx.fillStyle = "#ffd84a";
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1b1433";
+    ctx.stroke();
+    star(82, 34);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+  });
+}
+
 /**
- * Impact feedback: a quick flash on every hit, and on racket hits a burst of streaking sparks and
- * a moment of real light that catches the blade, the ball, and the table. Bounces on the table
- * and net leave an expanding ring that marks where the ball landed.
+ * Impact feedback: a starburst on every hit, and on racket hits a spray of streaking sparks and a
+ * moment of real light that catches the blade, the ball, and the table. Bounces on the table and
+ * net leave an expanding ring that marks where the ball landed.
  */
 export function createImpactEffects() {
   const object = new THREE.Group();
-  const flashMap = radialTexture("rgba(255,246,220,1)", "rgba(255,200,120,0)");
+  const flashMap = burstTexture();
   const pulses = Array.from({ length: PULSES }, () => {
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.035, 0.045, 40),
@@ -31,14 +58,16 @@ export function createImpactEffects() {
         forceSinglePass: true,
       }),
     );
+    // Drawn over everything, like an effect painted on the cel above the scene.
     const flash = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: flashMap,
-        blending: THREE.AdditiveBlending,
+        depthTest: false,
         depthWrite: false,
         transparent: true,
       }),
     );
+    flash.renderOrder = 1;
     ring.visible = flash.visible = false;
     object.add(ring, flash);
     return { ring, flash, age: 1, strength: 0, racket: false };
@@ -110,6 +139,7 @@ export function createImpactEffects() {
         pulse.ring.quaternion.copy(facing);
       }
       pulse.flash.position.copy(pulse.ring.position);
+      pulse.flash.material.rotation = Math.random() * Math.PI * 2;
       if (!racket) return;
       burst(pulse.flash.position, impact.surface === "player" ? -1 : 1, strength);
       light.position.copy(pulse.flash.position);
@@ -123,11 +153,14 @@ export function createImpactEffects() {
         pulse.ring.visible = ring < 1 && !pulse.racket;
         pulse.ring.scale.setScalar(1 + ring * (1 + pulse.strength * 1.5));
         pulse.ring.material.opacity = Math.max(0, 1 - ring) * 0.55;
-        const flash = pulse.age / 0.11;
+        // The burst pops to full size at once, holds, then fades out fast.
+        const flash = pulse.age / 0.12;
         pulse.flash.visible = flash < 1 && (pulse.racket || pulse.strength > 0.35);
-        pulse.flash.scale.setScalar((0.05 + 0.2 * pulse.strength) * (0.6 + flash));
-        pulse.flash.material.opacity =
-          (1 - flash) * (pulse.racket ? 0.9 : 0.4) * (0.4 + pulse.strength);
+        pulse.flash.scale.setScalar(
+          (pulse.racket ? 0.06 + 0.22 * pulse.strength : 0.05) *
+            (0.7 + 0.3 * Math.min(1, flash * 4)),
+        );
+        pulse.flash.material.opacity = Math.min(1, (1 - flash) * 2.5) * (pulse.racket ? 1 : 0.7);
       }
       lightAge += dt;
       const fade = Math.max(0, 1 - lightAge / FLASH_TIME);

@@ -78,12 +78,55 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, const in float depth,
   outputColor.rgb = mix(inputColor.rgb, ink, line);
 }`;
 
-/** Ink colour, in linear light. */
+/**
+ * Sports-anime drama for big hits: focus lines rushing in from the edges of the frame towards the
+ * hit, redrawn on twos like hand animation, and an impact frame that flashes the picture to
+ * two-tone ink and paper for an instant.
+ */
+const mangaShader = /* glsl */ `
+uniform vec2 focus;
+uniform float lines;
+uniform float flash;
+uniform vec3 ink;
+uniform vec3 paper;
+
+float hash(const in float n) {
+  return fract(sin(n) * 43758.5453);
+}
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+  vec3 colour = inputColor.rgb;
+  if (lines > 0.0) {
+    vec2 p = (uv - focus) * vec2(aspect, 1.0);
+    float slots = 110.0;
+    float turn = atan(p.y, p.x) / 6.2831853 * slots;
+    float slot = floor(turn);
+    float frame = floor(time * 12.0);
+    float seed = slot * 7.13 + frame * 31.7;
+    float radius = length(p);
+    float start = 0.32 + hash(seed) * 0.3 + (1.0 - lines) * 0.5;
+    // Each wedge tapers to a point at its inner end.
+    float thickness = (0.1 + 0.3 * hash(seed + 1.0)) * smoothstep(start, start + 0.35, radius);
+    float wedge = 1.0 - smoothstep(thickness - 0.08, thickness, abs(fract(turn) - 0.5));
+    wedge *= step(0.35, hash(seed + 2.0));
+    colour = mix(colour, paper, wedge * min(1.0, lines * 1.5) * 0.9);
+  }
+  if (flash > 0.0) {
+    float light = dot(colour, vec3(0.2126, 0.7152, 0.0722));
+    vec3 tone = mix(ink, paper, smoothstep(0.16, 0.2, light));
+    colour = mix(colour, tone, flash);
+  }
+  outputColor = vec4(colour, inputColor.a);
+}`;
+
+/** Ink and paper colours, in linear light. */
 const INK = new THREE.Color(0x15102e);
+const PAPER = new THREE.Color(0xfff8e8);
 
 /**
  * Renders the scene in high dynamic range and finishes it like an anime frame in one pass: bloom,
- * neutral tone mapping that keeps colours clean, the court's colour script, and ink outlines.
+ * neutral tone mapping that keeps colours clean, the court's colour script, ink outlines, and
+ * the focus lines and impact frames of big hits.
  */
 export function createPost(
   renderer: THREE.WebGLRenderer,
@@ -124,6 +167,18 @@ export function createPost(
       ["reach", new THREE.Uniform(9)],
     ]),
   });
+  const drama = {
+    focus: new THREE.Uniform(new THREE.Vector2(0.5, 0.5)),
+    lines: new THREE.Uniform(0),
+    flash: new THREE.Uniform(0),
+  };
+  const manga = new Effect("Manga", mangaShader, {
+    uniforms: new Map<string, THREE.Uniform>([
+      ...Object.entries(drama),
+      ["ink", new THREE.Uniform(INK)],
+      ["paper", new THREE.Uniform(PAPER)],
+    ]),
+  });
   composer.addPass(
     new EffectPass(
       camera,
@@ -131,6 +186,7 @@ export function createPost(
       new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL }),
       grade,
       ink,
+      manga,
     ),
   );
 
@@ -141,6 +197,15 @@ export function createPost(
       uniforms.gain.value.set(...look.gain);
       uniforms.saturation.value = look.saturation;
       uniforms.contrast.value = look.contrast;
+    },
+    /**
+     * Focus lines towards `focus` (screen UV) at `lines` strength, and an impact frame at `flash`
+     * strength; both 0–1, and 0 for neither.
+     */
+    setDrama(focus: THREE.Vector2, lines: number, flash: number) {
+      drama.focus.value.copy(focus);
+      drama.lines.value = lines;
+      drama.flash.value = flash;
     },
     /**
      * Compile `object`'s shaders for the HDR buffer every frame is drawn into. Shaders compiled for
