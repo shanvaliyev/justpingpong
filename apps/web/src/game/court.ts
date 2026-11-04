@@ -28,10 +28,19 @@ const MIN_PIXEL_RATIO = 1;
  * frame. The margin absorbs frame-time jitter, so 60 Hz screens draw every other frame.
  */
 const TITLE_FRAME = 1 / 30 - 0.004;
-/** A player hit at least this strong (0–1) gets a moment of slow motion and an impact frame. */
+/**
+ * A player hit at least this strong (0–1) plays as a dramatic beat: time stops on the impact
+ * frame, the frame dissolves back to colour, then play eases out of slow motion. Time scales
+ * everything that moves, effects and camera included, so the whole picture holds still.
+ */
 const SLOW_MOTION_HIT = 0.85;
-const SLOW_MOTION_TIME = 0.3;
-const IMPACT_FRAME_TIME = 0.07;
+const DRAMA_FREEZE = 0.3;
+/** Seconds the effects play on before the freeze, so it holds on a full burst. */
+const DRAMA_POSE = 0.04;
+const IMPACT_FADE = 0.2;
+const SLOW_MOTION_TIME = 0.9;
+/** Simulation speed as slow motion begins; it eases back to full speed. */
+const SLOW_MOTION_SPEED = 0.2;
 /** A player hit at least this strong (0–1) draws focus lines towards it. */
 const FOCUS_LINES_HIT = 0.6;
 const FOCUS_LINES_TIME = 0.45;
@@ -130,11 +139,20 @@ export function createCourt(host: HTMLElement) {
     effects.object,
   );
 
+  /** How fast the game's time runs against real time: 0 is frozen, 1 is normal. */
+  const timeScale = () => {
+    if (hitStop > 0) return hitStopSpeed;
+    // Ease in, so most of the slow motion stays slow and only its end speeds up.
+    const progress = 1 - slowMotion / SLOW_MOTION_TIME;
+    return SLOW_MOTION_SPEED + (1 - SLOW_MOTION_SPEED) * progress * progress;
+  };
   let shake = 0;
   let hitStop = 0;
+  let hitStopSpeed = 0.1;
   let slowMotion = 0;
   let zoom = 0;
   let focusLines = 0;
+  let focusLinesTime = FOCUS_LINES_TIME;
   let impactFrame = 0;
   const focusPoint = new THREE.Vector2(0.5, 0.5);
   const projected = new THREE.Vector3();
@@ -305,11 +323,7 @@ export function createCourt(host: HTMLElement) {
       return { x: dx * scale, y: -dy * scale };
     },
     /** Simulation speed for the next frame: a hard hit freezes time, then eases out of slow motion. */
-    timeScale() {
-      if (hitStop > 0) return 0.1;
-      if (slowMotion > 0) return 1 - 0.6 * (slowMotion / SLOW_MOTION_TIME);
-      return 1;
-    },
+    timeScale,
     render(game: PracticePhysics, impacts: readonly Impact[], elapsed: number, alpha: number) {
       const playing = game.phase === "playing";
       const alive = game.phase !== "paused";
@@ -334,28 +348,37 @@ export function createCourt(host: HTMLElement) {
           sampled = slow = 0;
         }
       }
-      const dt = playing ? elapsed : 0;
-      const ambientDt = alive ? elapsed : 0;
+      // The beat's own timers run in real time; everything else runs in game time, below.
+      const real = playing ? elapsed : 0;
       if (!playing) alpha = 1;
-      hitStop = Math.max(0, hitStop - dt);
-      slowMotion = Math.max(0, slowMotion - dt);
-      focusLines = Math.max(0, focusLines - dt);
-      impactFrame = Math.max(0, impactFrame - dt);
-      clock += dt;
-      ambientClock += ambientDt;
+      // Slow motion starts once the freeze ends.
+      if (hitStop <= 0) slowMotion = Math.max(0, slowMotion - real);
+      hitStop = Math.max(0, hitStop - real);
+      impactFrame = Math.max(0, impactFrame - real);
+      let pose = 0;
       for (const impact of impacts) {
         const strength = Math.min(1, impact.speed / 7);
         if (impact.surface === "player") {
           player.hit(strength);
           shake = Math.min(1, shake + strength * strength * 0.9);
           zoom = Math.min(3, zoom + strength * strength * 2.5);
-          if (strength > 0.6) hitStop = 0.05 + (strength - 0.6) * 0.06;
-          if (strength >= SLOW_MOTION_HIT) {
+          const drama = strength >= SLOW_MOTION_HIT;
+          if (drama) {
+            hitStop = DRAMA_FREEZE;
+            hitStopSpeed = 0;
+            pose = DRAMA_POSE;
             slowMotion = SLOW_MOTION_TIME;
-            impactFrame = IMPACT_FRAME_TIME;
+            impactFrame = DRAMA_FREEZE + IMPACT_FADE;
+          } else if (strength > 0.6 && hitStop <= 0) {
+            hitStop = 0.05 + (strength - 0.6) * 0.06;
+            hitStopSpeed = 0.1;
           }
           if (strength >= FOCUS_LINES_HIT) {
-            focusLines = FOCUS_LINES_TIME;
+            // A dramatic beat keeps its focus lines until slow motion is nearly over.
+            focusLinesTime = drama
+              ? SLOW_MOTION_TIME * 0.6
+              : Math.max(focusLines, FOCUS_LINES_TIME);
+            focusLines = focusLinesTime;
             projected.copy(impact.position).project(camera);
             focusPoint.set(projected.x * 0.5 + 0.5, projected.y * 0.5 + 0.5);
           }
@@ -363,7 +386,15 @@ export function createCourt(host: HTMLElement) {
         if (impact.surface === "opponent") opponent.hit(strength);
         effects.add(impact, strength, camera.quaternion);
       }
-      effects.update(dt);
+      // Game time: frozen during a freeze, slowed in slow motion. Petals and the camera's
+      // breathing only stop while a rally is frozen, not on the title or pause screens.
+      const scale = timeScale();
+      const dt = real * scale;
+      const ambientDt = alive ? (playing ? dt : elapsed) : 0;
+      focusLines = Math.max(0, focusLines - dt);
+      clock += dt;
+      ambientClock += ambientDt;
+      effects.update(dt + pose);
       player.update(position.lerpVectors(game.previousPlayer, game.player, alpha), dt);
       opponent.update(position.lerpVectors(game.previousOpponent, game.opponent, alpha), dt);
       ball.update(game, alpha, dt, camera.position);
@@ -388,8 +419,14 @@ export function createCourt(host: HTMLElement) {
       camera.rotateZ(Math.sin(clock * 53 + 2.1) * amount * 0.6);
       camera.fov = aimCamera.fov - zoom;
       camera.updateProjectionMatrix();
-      post.setDrama(focusPoint, focusLines / FOCUS_LINES_TIME, impactFrame > 0 ? 1 : 0);
-      post.render(elapsed);
+      // The impact frame holds through the freeze, then dissolves back to colour.
+      post.setDrama(
+        focusPoint,
+        focusLines / focusLinesTime,
+        Math.min(1, impactFrame / IMPACT_FADE),
+      );
+      // The focus lines redraw on game time too, so they hold still in a freeze.
+      post.render(playing ? dt : elapsed);
     },
     dispose() {
       disposed = true;
