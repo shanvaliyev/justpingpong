@@ -3,7 +3,6 @@ import type { SceneryConfig } from "./scenery";
 
 type Light = { color: number; intensity: number; position: [number, number, number] };
 type Lighting = {
-  exposure: number;
   sky: number;
   ground: number;
   ambient: number;
@@ -45,7 +44,6 @@ export const COURTS: Record<CourtId, CourtConfig> = {
       particles: { kind: "petals", color: 0xffffff, count: 160 },
     },
     lighting: {
-      exposure: 1,
       sky: 0xa9c8f5,
       ground: 0xc9b8a6,
       ambient: 1.6,
@@ -73,7 +71,6 @@ export const COURTS: Record<CourtId, CourtConfig> = {
       particles: { kind: "motes", color: 0xffd29a, count: 60 },
     },
     lighting: {
-      exposure: 1,
       sky: 0x8a7fd0,
       ground: 0xd09a78,
       ambient: 1.4,
@@ -100,7 +97,6 @@ export const COURTS: Record<CourtId, CourtConfig> = {
       particles: { kind: "motes", color: 0xcfe0ff, count: 40 },
     },
     lighting: {
-      exposure: 1,
       sky: 0x4a5cb0,
       ground: 0x3a3a50,
       ambient: 1.2,

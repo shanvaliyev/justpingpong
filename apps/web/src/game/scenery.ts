@@ -40,12 +40,12 @@ export const courtImages = (id: CourtId) => ({
 });
 
 /** Decode an image off the main thread; same-origin, so it shares the page's preload. */
-async function loadTexture(src: string, colour: boolean) {
+async function loadTexture(src: string) {
   const image = new Image();
   image.src = src;
   await image.decode();
   const texture = new THREE.Texture(image);
-  texture.colorSpace = colour ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.needsUpdate = true;
   return texture;
@@ -358,8 +358,8 @@ export async function loadScenery(id: CourtId, renderer: THREE.WebGLRenderer) {
   const { scenery: config } = COURTS[id];
   const images = courtImages(id);
   const [backdropMap, floorMap] = await Promise.all([
-    loadTexture(images.backdrop, true),
-    loadTexture(images.floor, true),
+    loadTexture(images.backdrop),
+    loadTexture(images.floor),
   ]);
   floorMap.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
 

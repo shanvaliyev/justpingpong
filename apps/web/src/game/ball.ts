@@ -5,8 +5,8 @@ import { canvasTexture, radialTexture } from "./textures";
 import { toonMaterial } from "./toon";
 
 // Speed streak behind fast balls, as an animator draws it: a camera-facing smear of the ball's
-// colour back along the flight, fading out. It is built from the velocity rather than past frames, so slow devices draw the
-// same length.
+// colour back along the flight, fading out. It is built from the velocity rather than past
+// frames, so slow devices draw the same length.
 const TRAIL_POINTS = 10;
 const TRAIL_TIME = 0.045;
 const TRAIL_COLOR = new THREE.Color(0xffc070);

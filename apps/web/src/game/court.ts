@@ -68,7 +68,7 @@ export type Court = ReturnType<typeof createCourt>;
 
 /**
  * The 3D court inside `host`. Nothing is drawn until `ready` resolves: the first court's scenery
- * and reflections are built and every shader has compiled.
+ * is built and every shader has compiled.
  */
 export function createCourt(host: HTMLElement) {
   const renderer = new THREE.WebGLRenderer({
@@ -231,7 +231,6 @@ export function createCourt(host: HTMLElement) {
 
   const applyLighting = (id: CourtId) => {
     const { lighting, haze, grade } = COURTS[id];
-    renderer.toneMappingExposure = lighting.exposure;
     hemisphere.color.set(lighting.sky);
     hemisphere.groundColor.set(lighting.ground);
     hemisphere.intensity = lighting.ambient;
