@@ -184,10 +184,11 @@ export function createCourt(host: HTMLElement) {
         .addScaledVector(PORTRAIT_SIGHT, PORTRAIT_HALF_VIEW / halfWidth);
       camera.lookAt(PORTRAIT_FOCUS);
     } else {
-      // Level enough to see the horizon above the far end, like the portrait view.
+      // A standing player's eye height, level enough to see the horizon above the far end, like
+      // the portrait view.
       camera.fov = 50;
-      camera.position.set(0, 1.4, 3.3);
-      camera.lookAt(0, 0.35, 0);
+      camera.position.set(0, 1.05, 3.2);
+      camera.lookAt(0, 0.15, 0);
     }
     camera.updateProjectionMatrix();
     aimCamera.copy(camera);
