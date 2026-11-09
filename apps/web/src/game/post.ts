@@ -120,7 +120,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 }`;
 
 /** Ink and paper colours, in linear light. */
-const INK = new THREE.Color(0x15102e);
+export const INK = new THREE.Color(0x15102e);
 const PAPER = new THREE.Color(0xfff8e8);
 
 /**

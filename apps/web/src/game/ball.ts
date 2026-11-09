@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 import { BALL_RADIUS, clamp, TABLE, type PracticePhysics } from "./physics";
+import { INK } from "./post";
 import { canvasTexture, radialTexture } from "./textures";
 import { toonMaterial } from "./toon";
 
@@ -10,6 +11,12 @@ import { toonMaterial } from "./toon";
 const TRAIL_POINTS = 10;
 const TRAIL_TIME = 0.045;
 const TRAIL_COLOR = new THREE.Color(0xffc070);
+// Readability, in screen heights. The depth-based ink pass draws lines about as thick as a far
+// ball's radius, which would leave only a dull speck in a dark blot, so the ball stays out of the
+// depth buffer and draws its own thin outline. Far away it also never shrinks below a minimum
+// size, as sports games keep the ball in sight; physics keeps the real size.
+const OUTLINE = 1.6 / 720;
+const MIN_DIAMETER = 10 / 720;
 
 /** Orange ball with a seam and a small print, so its spin is visible in flight. */
 function ballTexture() {
@@ -64,11 +71,28 @@ function createTrail() {
 export function createBall() {
   // The root follows the flight and stretches with speed; the mesh inside spins.
   const root = new THREE.Group();
-  // A little emissive keeps it readable in shade and at dusk.
-  const material = toonMaterial({ map: ballTexture(), emissive: 0xff7a14 });
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_RADIUS, 32, 20), material);
+  const geometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 20);
+  // An inked shell around the ball. Both draw without depth at the same point, so the
+  // back-to-front sort falls back to creation order: create the outline first.
+  const outline = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+      color: INK,
+      side: THREE.BackSide,
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  // Mostly self-lit, so it stays the brightest thing around it in sun, shade, and dusk alike.
+  const material = toonMaterial({
+    map: ballTexture(),
+    emissive: 0xff7a14,
+    transparent: true,
+    depthWrite: false,
+  });
+  const ball = new THREE.Mesh(geometry, material);
   ball.castShadow = true;
-  root.add(ball);
+  root.add(outline, ball);
   const glow = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: radialTexture("rgba(255,214,150,0.9)", "rgba(255,170,80,0)"),
@@ -104,12 +128,19 @@ export function createBall() {
     /** Ambient glow for the court's light: dusk courts make the ball glow more. */
     setGlow(level: number) {
       glowLevel = level;
-      material.emissiveIntensity = 0.04 + level * 0.4;
+      material.emissiveIntensity = 0.45 + level * 0.4;
     },
-    update(game: PracticePhysics, alpha: number, dt: number, eye: THREE.Vector3) {
+    update(game: PracticePhysics, alpha: number, dt: number, camera: THREE.PerspectiveCamera) {
       const { velocity } = game;
       root.position.lerpVectors(game.previousBall, game.ball, alpha);
       const position = root.position;
+      // Metres per screen height at the ball's distance.
+      const screen =
+        2 *
+        position.distanceTo(camera.position) *
+        Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const size = Math.max(1, (MIN_DIAMETER * screen) / (2 * BALL_RADIUS));
+      outline.scale.setScalar(1 + (OUTLINE * screen) / (BALL_RADIUS * size));
       const visible = game.nextBallIn <= 0;
       root.visible = visible;
       const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
@@ -128,6 +159,7 @@ export function createBall() {
       }
       root.quaternion.copy(stretch);
       root.scale.set(1 - stretchAmount * 0.4, 1 + stretchAmount, 1 - stretchAmount * 0.4);
+      root.scale.multiplyScalar(size);
       ball.quaternion.copy(stretch).invert().multiply(spinRotation);
 
       glow.visible = visible;
@@ -145,7 +177,7 @@ export function createBall() {
       const streak = visible ? clamp((speed - 3.5) / 5, 0, 1) * 0.8 : 0;
       trail.mesh.visible = streak > 0;
       if (!trail.mesh.visible) return;
-      view.subVectors(eye, position);
+      view.subVectors(camera.position, position);
       side.crossVectors(travel, view).normalize();
       for (let i = 0; i < TRAIL_POINTS; i++) {
         const head = i / (TRAIL_POINTS - 1);
@@ -154,7 +186,7 @@ export function createBall() {
         const x = position.x - velocity.x * back;
         const y = position.y - velocity.y * back - 4.9 * back * back;
         const z = position.z - velocity.z * back;
-        const width = BALL_RADIUS * (0.5 + 0.45 * head);
+        const width = BALL_RADIUS * size * (0.5 + 0.45 * head);
         trail.positions.set([x + side.x * width, y + side.y * width, z + side.z * width], i * 6);
         trail.positions.set(
           [x - side.x * width, y - side.y * width, z - side.z * width],

@@ -397,7 +397,7 @@ export function createCourt(host: HTMLElement) {
       effects.update(dt + pose);
       player.update(position.lerpVectors(game.previousPlayer, game.player, alpha), dt);
       opponent.update(position.lerpVectors(game.previousOpponent, game.opponent, alpha), dt);
-      ball.update(game, alpha, dt, camera.position);
+      ball.update(game, alpha, dt, camera);
       shown?.update(ambientDt, ambientClock);
 
       // The drawn camera breathes like a handheld shot, leans a little towards the ball, punches
